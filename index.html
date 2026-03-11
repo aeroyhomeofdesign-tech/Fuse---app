@@ -15,19 +15,23 @@ body{background:#0A0A0A;color:#F0EDE8;font-family:'DM Sans',sans-serif;min-heigh
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-thumb{background:#222;border-radius:2px}
 input,textarea{font-family:'DM Sans',sans-serif}
+@keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes fadeOut{from{opacity:1}to{opacity:0}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.notif-toast{animation:slideIn 0.4s ease forwards}
+.notif-hide{animation:fadeOut 0.4s ease forwards}
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
 
-const SUPABASE_URL = "https://vdpyyzbeceyykptstzgr.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkcHl5emJlY2V5eWtwdHN0emdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMzQ3NjMsImV4cCI6MjA4ODgxMDc2M30.K9afo60MWax8EKb5RNYCRheazS-oeIxgWs8HPMHJTg0";
+const SUPABASE_URL="https://vdpyyzbeceyykptstzgr.supabase.co";
+const SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkcHl5emJlY2V5eWtwdHN0emdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMzQ3NjMsImV4cCI6MjA4ODgxMDc2M30.K9afo60MWax8EKb5RNYCRheazS-oeIxgWs8HPMHJTg0";
 const{createClient}=window.supabase;
 const supabase=createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
-
 const FIRE="#FF4D1C",AMBER="#FFAB00";
-const{useState,useEffect}=React;
+const{useState,useEffect,useRef}=React;
 
 function Avatar({letter,bg,size=38}){
 return <div style={{width:size,height:size,borderRadius:"50%",background:bg||`linear-gradient(135deg,${FIRE},${AMBER})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:size*0.38,color:"#fff",flexShrink:0}}>{letter}</div>
@@ -37,6 +41,24 @@ function FuseLogo(){
 return <svg width="24" height="24" viewBox="0 0 80 80" fill="none"><defs><linearGradient id="lg" x1="12" y1="12" x2="68" y2="68"><stop offset="0%" stopColor={AMBER}/><stop offset="100%" stopColor={FIRE}/></linearGradient></defs><path d="M40 12 L44 32 L56 20 L46 36 L68 34 L50 44 L60 62 L40 50 L20 62 L30 44 L12 34 L34 36 L24 20 L36 32 Z" fill="url(#lg)"/></svg>
 }
 
+// TOAST NOTIFICATIONS
+function ToastContainer({toasts,onRemove}){
+return(
+<div style={{position:"fixed",top:70,right:12,zIndex:1000,display:"flex",flexDirection:"column",gap:8,maxWidth:300}}>
+{toasts.map(t=>(
+<div key={t.id} className="notif-toast" style={{background:"#1A1A1A",border:`1px solid ${t.color||"rgba(255,77,28,0.3)"}`,borderRadius:10,padding:"12px 14px",display:"flex",alignItems:"flex-start",gap:10,boxShadow:"0 8px 32px rgba(0,0,0,0.4)",cursor:"pointer"}} onClick={()=>onRemove(t.id)}>
+<div style={{fontSize:20,flexShrink:0}}>{t.icon}</div>
+<div style={{flex:1}}>
+<div style={{fontSize:12,fontWeight:700,color:t.color||FIRE,letterSpacing:0.5,marginBottom:2}}>{t.title}</div>
+<div style={{fontSize:12,color:"rgba(240,237,232,0.7)",lineHeight:1.4}}>{t.message}</div>
+</div>
+<div style={{fontSize:16,color:"#555",flexShrink:0}} onClick={e=>{e.stopPropagation();onRemove(t.id);}}>×</div>
+</div>
+))}
+</div>
+);
+}
+
 function AuthScreen({onAuth}){
 const[mode,setMode]=useState("login");
 const[email,setEmail]=useState("");
@@ -44,7 +66,6 @@ const[password,setPassword]=useState("");
 const[username,setUsername]=useState("");
 const[loading,setLoading]=useState(false);
 const[msg,setMsg]=useState("");
-
 const handleSubmit=async()=>{
 setLoading(true);setMsg("");
 try{
@@ -60,7 +81,6 @@ else onAuth(data.user);
 }catch(e){setMsg("Something went wrong.");}
 setLoading(false);
 };
-
 return(
 <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,position:"relative",minHeight:"80vh"}}>
 <div style={{position:"absolute",inset:0,background:`radial-gradient(ellipse 80% 60% at 50% 100%, rgba(255,77,28,0.12) 0%, transparent 70%)`,pointerEvents:"none"}}/>
@@ -109,18 +129,22 @@ if(s<86400)return Math.floor(s/3600)+"h ago";
 return Math.floor(s/86400)+"d ago";
 }
 
-function PostCard({post}){
+function PostCard({post,currentUser,onLike,onMention}){
 const[liked,setLiked]=useState(false);
-const[likes,setLikes]=useState(0);
-const toggle=()=>{setLiked(!liked);setLikes(liked?likes-1:likes+1);};
+const[likes,setLikes]=useState(post.likes||0);
+const username=currentUser?.user_metadata?.username||currentUser?.email?.split("@")[0]||"user";
+const toggle=()=>{
+const newLiked=!liked;
+setLiked(newLiked);
+setLikes(newLiked?likes+1:likes-1);
+if(newLiked&&post.username!==username)onLike(post.username,post.body);
+};
 return(
 <div style={{padding:16,borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
 <div style={{display:"inline-flex",alignItems:"center",gap:4,background:"rgba(255,171,0,0.1)",border:"1px solid rgba(255,171,0,0.2)",color:AMBER,fontSize:10,padding:"2px 8px",borderRadius:3,marginBottom:8,letterSpacing:1,fontWeight:600}}>{post.ground||"🎙 OPEN MIC"}</div>
 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
 <Avatar letter={(post.username||"U")[0].toUpperCase()} size={34}/>
-<div style={{flex:1}}>
-<span style={{fontSize:14,fontWeight:700}}>@{post.username} </span>
-</div>
+<div style={{flex:1}}><span style={{fontSize:14,fontWeight:700}}>@{post.username}</span></div>
 <span style={{fontSize:11,color:"#555"}}>{timeAgo(post.created_at)}</span>
 </div>
 <div style={{fontSize:14,lineHeight:1.65,color:"rgba(240,237,232,0.82)",paddingLeft:44,marginBottom:12}}>{post.body}</div>
@@ -132,7 +156,42 @@ return(
 );
 }
 
-function FeedScreen({user}){
+function NotificationsPanel({notifs,onClear,onClose}){
+return(
+<div style={{position:"fixed",inset:0,zIndex:200,display:"flex",flexDirection:"column"}}>
+<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)"}} onClick={onClose}/>
+<div style={{position:"relative",zIndex:201,background:"#111",borderLeft:"1px solid rgba(255,255,255,0.07)",width:"100%",maxWidth:340,marginLeft:"auto",height:"100%",display:"flex",flexDirection:"column"}}>
+<div style={{padding:"16px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+<div style={{fontSize:18,fontWeight:900,letterSpacing:2}}>ALERTS</div>
+<div style={{display:"flex",gap:8,alignItems:"center"}}>
+{notifs.length>0&&<button onClick={onClear} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",color:"#666",fontSize:11,padding:"4px 10px",borderRadius:4,cursor:"pointer"}}>Clear all</button>}
+<button onClick={onClose} style={{background:"none",border:"none",color:"#666",fontSize:20,cursor:"pointer"}}>×</button>
+</div>
+</div>
+{notifs.length===0?
+<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8,color:"#555"}}>
+<div style={{fontSize:32}}>🔔</div>
+<div style={{fontSize:14}}>No notifications yet</div>
+</div>:
+<div style={{flex:1,overflowY:"auto"}}>
+{notifs.map(n=>(
+<div key={n.id} style={{padding:"14px 20px",borderBottom:"1px solid rgba(255,255,255,0.05)",display:"flex",gap:12,alignItems:"flex-start",background:n.read?"transparent":"rgba(255,77,28,0.04)"}}>
+<div style={{fontSize:22,flexShrink:0}}>{n.icon}</div>
+<div style={{flex:1}}>
+<div style={{fontSize:13,fontWeight:600,marginBottom:2}}>{n.title}</div>
+<div style={{fontSize:12,color:"#666",lineHeight:1.5}}>{n.message}</div>
+<div style={{fontSize:10,color:"#444",marginTop:4,fontFamily:"monospace"}}>{timeAgo(n.time)}</div>
+</div>
+{!n.read&&<div style={{width:8,height:8,borderRadius:"50%",background:FIRE,flexShrink:0,marginTop:4}}/>}
+</div>
+))}
+</div>}
+</div>
+</div>
+);
+}
+
+function FeedScreen({user,addToast}){
 const[posts,setPosts]=useState([]);
 const[newPost,setNewPost]=useState("");
 const[loading,setLoading]=useState(false);
@@ -142,15 +201,23 @@ const username=user?.user_metadata?.username||user?.email?.split("@")[0]||"user"
 
 useEffect(()=>{
 fetchPosts();
-const channel=supabase.channel('posts').on('postgres_changes',{event:'INSERT',schema:'public',table:'posts'},payload=>{
-setPosts(p=>[payload.new,...p]);
+const channel=supabase.channel('realtime-posts')
+.on('postgres_changes',{event:'INSERT',schema:'public',table:'posts'},payload=>{
+const p=payload.new;
+setPosts(prev=>[p,...prev]);
+if(p.username!==username){
+addToast({icon:"🔥",title:"NEW POST",message:`@${p.username} just posted on FUSE!`,color:FIRE});
+}
+if(p.body&&p.body.includes(`@${username}`)){
+addToast({icon:"📣",title:"YOU WERE MENTIONED",message:`@${p.username} mentioned you!`,color:AMBER});
+}
 }).subscribe();
 return()=>supabase.removeChannel(channel);
 },[]);
 
 const fetchPosts=async()=>{
 setFetching(true);
-const{data,error}=await supabase.from('posts').select('*').order('created_at',{ascending:false}).limit(50);
+const{data}=await supabase.from('posts').select('*').order('created_at',{ascending:false}).limit(50);
 if(data)setPosts(data);
 setFetching(false);
 };
@@ -161,6 +228,10 @@ setLoading(true);
 const{error}=await supabase.from('posts').insert({body:newPost,username,ground:"🎙 OPEN MIC"});
 if(!error)setNewPost("");
 setLoading(false);
+};
+
+const handleLike=(postAuthor,postBody)=>{
+addToast({icon:"♥",title:"YOUR POST WAS LIKED",message:`Someone liked your post: "${postBody.slice(0,40)}..."`,color:"#ec4899"});
 };
 
 return(
@@ -184,8 +255,8 @@ return(
 </div>
 </div>
 {fetching?<div style={{textAlign:"center",padding:40,color:"#555",fontSize:24}}>⚡</div>:
-posts.length===0?<div style={{textAlign:"center",padding:40,color:"#555",fontSize:14}}>No posts yet. Be the first to speak freely! 🔥</div>:
-posts.map(p=><PostCard key={p.id} post={p}/>)}
+posts.length===0?<div style={{textAlign:"center",padding:40,color:"#555",fontSize:14}}>No posts yet. Be the first! 🔥</div>:
+posts.map(p=><PostCard key={p.id} post={p} currentUser={user} onLike={handleLike} onMention={()=>{}}/>)}
 </div>
 );
 }
@@ -231,11 +302,9 @@ return(
 function ProfileScreen({user,onSignOut}){
 const[posts,setPosts]=useState([]);
 const username=user?.user_metadata?.username||user?.email?.split("@")[0]||"user";
-
 useEffect(()=>{
 supabase.from('posts').select('*').eq('username',username).order('created_at',{ascending:false}).then(({data})=>{if(data)setPosts(data);});
 },[]);
-
 return(
 <div style={{flex:1,maxWidth:680}}>
 <div style={{height:140,background:"linear-gradient(135deg,#1a0a00 0%,#2d1200 50%,rgba(255,77,28,0.12) 100%)"}}/>
@@ -255,7 +324,7 @@ return(
 </div>
 {posts.length===0?
 <div style={{textAlign:"center",padding:40,color:"#555",fontSize:14}}>No posts yet. Share your first thought! 🔥</div>:
-posts.map(p=><PostCard key={p.id} post={p}/>)}
+posts.map(p=><PostCard key={p.id} post={p} currentUser={user} onLike={()=>{}} onMention={()=>{}}/>)}
 </div>
 );
 }
@@ -264,6 +333,33 @@ function App(){
 const[user,setUser]=useState(null);
 const[screen,setScreen]=useState("splash");
 const[loading,setLoading]=useState(true);
+const[toasts,setToasts]=useState([]);
+const[notifs,setNotifs]=useState([]);
+const[showNotifs,setShowNotifs]=useState(false);
+const[unread,setUnread]=useState(0);
+const toastTimer=useRef({});
+
+const addToast=(t)=>{
+const id=Date.now();
+const toast={...t,id};
+setToasts(p=>[...p,toast]);
+setNotifs(p=>[{...toast,time:new Date().toISOString(),read:false},...p]);
+setUnread(p=>p+1);
+toastTimer.current[id]=setTimeout(()=>{
+setToasts(p=>p.filter(x=>x.id!==id));
+},4000);
+};
+
+const removeToast=(id)=>{
+clearTimeout(toastTimer.current[id]);
+setToasts(p=>p.filter(x=>x.id!==id));
+};
+
+const openNotifs=()=>{
+setShowNotifs(true);
+setUnread(0);
+setNotifs(p=>p.map(n=>({...n,read:true})));
+};
 
 useEffect(()=>{
 supabase.auth.getSession().then(({data:{session}})=>{
@@ -271,7 +367,10 @@ if(session?.user){setUser(session.user);setScreen("feed");}
 setLoading(false);
 });
 supabase.auth.onAuthStateChange((_,session)=>{
-if(session?.user){setUser(session.user);setScreen("feed");}
+if(session?.user){
+setUser(session.user);setScreen("feed");
+addToast({icon:"👋",title:"WELCOME TO FUSE",message:"You're now part of the free speech revolution!",color:"#10b981"});
+}
 else{setUser(null);setScreen("splash");}
 });
 },[]);
@@ -288,15 +387,27 @@ const LABELS=user?["FEED","GROUNDS","PROFILE"]:["HOME","JOIN"];
 
 return(
 <div style={{fontFamily:"'DM Sans','Segoe UI',sans-serif",background:"#0A0A0A",color:"#F0EDE8",minHeight:"100vh",display:"flex",flexDirection:"column"}}>
+
+<ToastContainer toasts={toasts} onRemove={removeToast}/>
+{showNotifs&&<NotificationsPanel notifs={notifs} onClear={()=>{setNotifs([]);setUnread(0);}} onClose={()=>setShowNotifs(false)}/>}
+
 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)",background:"rgba(10,10,10,0.97)",position:"sticky",top:0,zIndex:50}}>
 <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setScreen(user?"feed":"splash")}>
 <FuseLogo/>
 <div style={{fontSize:26,fontWeight:900,letterSpacing:6,background:`linear-gradient(135deg,#fff 30%,${FIRE} 100%)`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"'Bebas Neue',sans-serif"}}>FUSE</div>
 </div>
+<div style={{display:"flex",alignItems:"center",gap:8}}>
+{user&&(
+<button onClick={openNotifs} style={{position:"relative",background:"none",border:"none",cursor:"pointer",padding:6,color:"#888",fontSize:18}}>
+🔔
+{unread>0&&<div style={{position:"absolute",top:2,right:2,width:16,height:16,borderRadius:"50%",background:FIRE,fontSize:10,fontWeight:700,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",animation:"pulse 1.5s infinite"}}>{unread}</div>}
+</button>
+)}
 <div style={{display:"flex",gap:3,background:"#111",borderRadius:8,padding:4,border:"1px solid rgba(255,255,255,0.07)"}}>
 {SCREENS.map((s,i)=>(
 <button key={s} onClick={()=>setScreen(s)} style={{padding:"6px 12px",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",letterSpacing:1,background:screen===s?FIRE:"transparent",color:screen===s?"#fff":"#888"}}>{LABELS[i]}</button>
 ))}
+</div>
 </div>
 </div>
 
@@ -323,7 +434,7 @@ return(
 </div>
 )}
 {screen==="auth"&&<AuthScreen onAuth={(u)=>{setUser(u);setScreen("feed");}}/>}
-{screen==="feed"&&<FeedScreen user={user}/>}
+{screen==="feed"&&<FeedScreen user={user} addToast={addToast}/>}
 {screen==="communities"&&<CommunitiesScreen/>}
 {screen==="profile"&&<ProfileScreen user={user} onSignOut={handleSignOut}/>}
 </div>
