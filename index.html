@@ -1,0 +1,217 @@
+!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FUSE — Where Voices Ignite</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0A0A0A;color:#F0EDE8;font-family:'DM Sans',sans-serif;min-height:100vh}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:#222;border-radius:2px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const FIRE="#FF4D1C",AMBER="#FFAB00";
+const{useState}=React;
+
+function Avatar({letter,bg,size=38}){
+return <div style={{width:size,height:size,borderRadius:"50%",background:bg||`linear-gradient(135deg,${FIRE},${AMBER})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:size*0.38,color:"#fff",flexShrink:0}}>{letter}</div>
+}
+
+function FuseLogo(){
+return <svg width="24" height="24" viewBox="0 0 80 80" fill="none"><defs><linearGradient id="lg" x1="12" y1="12" x2="68" y2="68"><stop offset="0%" stopColor={AMBER}/><stop offset="100%" stopColor={FIRE}/></linearGradient></defs><path d="M40 12 L44 32 L56 20 L46 36 L68 34 L50 44 L60 62 L40 50 L20 62 L30 44 L12 34 L34 36 L24 20 L36 32 Z" fill="url(#lg)"/></svg>
+}
+
+const POSTS=[
+{id:1,author:"Marcus Webb",handle:"@marcuswebb",avatarBg:"linear-gradient(135deg,#3b82f6,#1d4ed8)",time:"2h ago",ground:"⚡ POLITICS",body:"The fact that you can get banned for simply stating facts on other platforms is exactly why FUSE needs to exist. Freedom of thought is non-negotiable.",tags:["#FreeSpeech"],likes:"2.4K",comments:"318",shares:"891",verified:true},
+{id:2,author:"Amara Osei",handle:"@amaraosei",avatarBg:"linear-gradient(135deg,#10b981,#065f46)",time:"5h ago",ground:"🎙 OPEN MIC",body:"Finally a platform that doesn't treat me like a child. I've had 3 accounts banned on other apps for having conservative views. FUSE is where I call home now.",tags:["#FUSE","#FreedomOfSpeech"],likes:"1.1K",comments:"204",shares:"567",verified:true},
+{id:3,author:"Navi Leeroy Chauke",handle:"@navileeroy",avatarBg:`linear-gradient(135deg,${FIRE},${AMBER})`,time:"1d ago",ground:"💼 ENTREPRENEURS",body:"Built FUSE from $0. No investors. No connections. Just a vision and a laptop. If a 22 year old from Zimbabwe can do it — so can you. 🔥",tags:["#FUSE","#AfricaRising"],likes:"8.9K",comments:"1.2K",shares:"4.4K",verified:true},
+{id:4,author:"Priya Nair",handle:"@priyanair",avatarBg:"linear-gradient(135deg,#ec4899,#9d174d)",time:"12h ago",ground:"🌍 AFRICA RISING",body:"Shoutout to every African entrepreneur building from scratch with zero connections. Your grind is seen. The continent is watching. Keep building.",tags:["#AfricaRising"],likes:"6.2K",comments:"1.4K",shares:"3.8K",verified:true},
+];
+
+const GROUNDS=[
+{name:"Politics",emoji:"🗳",members:"284K",desc:"Real discourse. All views welcome.",bg:"linear-gradient(135deg,#1a0020,#3d0060)"},
+{name:"Africa Rising",emoji:"🌍",members:"156K",desc:"African voices, stories and culture.",bg:"linear-gradient(135deg,#001a10,#004020)"},
+{name:"Creators",emoji:"🎬",members:"112K",desc:"For creators silenced elsewhere.",bg:"linear-gradient(135deg,#1a0a00,#3d1800)"},
+{name:"Entrepreneurs",emoji:"💼",members:"98K",desc:"Build, hustle, grow. Zero gatekeeping.",bg:"linear-gradient(135deg,#001520,#003060)"},
+{name:"Faith & Values",emoji:"✝",members:"87K",desc:"Faith, tradition, values-driven talk.",bg:"linear-gradient(135deg,#1a1500,#3d3000)"},
+{name:"Open Mic",emoji:"🎙",members:"198K",desc:"Say anything. Debate everything.",bg:"linear-gradient(135deg,#0a001a,#200050)"},
+];
+
+function PostCard({post}){
+const[liked,setLiked]=useState(false);
+return(
+<div style={{padding:16,borderBottom:"1px solid rgba(255,255,255,0.07)",cursor:"pointer"}}>
+  <div style={{display:"inline-flex",alignItems:"center",gap:4,background:"rgba(255,171,0,0.1)",border:"1px solid rgba(255,171,0,0.2)",color:AMBER,fontSize:10,padding:"2px 8px",borderRadius:3,marginBottom:8,letterSpacing:1,fontWeight:600}}>{post.ground}</div>
+  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+    <Avatar letter={post.author[0]} bg={post.avatarBg} size={34}/>
+    <div style={{flex:1}}>
+      <span style={{fontSize:14,fontWeight:700}}>{post.author} </span>
+      {post.verified&&<span style={{color:FIRE,fontSize:12}}>✦ </span>}
+      <span style={{fontSize:11,color:"#666"}}>{post.handle}</span>
+    </div>
+    <span style={{fontSize:11,color:"#555"}}>{post.time}</span>
+  </div>
+  <div style={{fontSize:14,lineHeight:1.65,color:"rgba(240,237,232,0.82)",paddingLeft:44,marginBottom:12}}>
+    {post.body} {post.tags.map(t=><span key={t} style={{color:AMBER,fontWeight:500}}>{t} </span>)}
+  </div>
+  <div style={{display:"flex",gap:4,paddingLeft:44}}>
+    <button onClick={()=>setLiked(!liked)} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 9px",borderRadius:4,fontSize:12,color:liked?FIRE:"#666",background:"none",border:"none",cursor:"pointer"}}>{liked?"♥":"♡"} {post.likes}</button>
+    <button style={{display:"flex",alignItems:"center",gap:5,padding:"5px 9px",borderRadius:4,fontSize:12,color:"#666",background:"none",border:"none",cursor:"pointer"}}>💬 {post.comments}</button>
+    <button style={{display:"flex",alignItems:"center",gap:5,padding:"5px 9px",borderRadius:4,fontSize:12,color:"#666",background:"none",border:"none",cursor:"pointer"}}>↗ {post.shares}</button>
+  </div>
+</div>
+)
+}
+
+function SplashScreen({onEnter}){
+return(
+<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:40,position:"relative",overflow:"hidden",minHeight:"80vh"}}>
+  <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse 80% 60% at 50% 100%, rgba(255,77,28,0.15) 0%, transparent 70%)",pointerEvents:"none"}}/>
+  <div style={{position:"relative",zIndex:2,textAlign:"center"}}>
+    <div style={{fontSize:60,marginBottom:4}}>⚡</div>
+    <div style={{fontSize:80,fontWeight:900,letterSpacing:12,lineHeight:1,background:`linear-gradient(135deg,#fff 30%,${FIRE} 100%)`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"'Bebas Neue',sans-serif"}}>FUSE</div>
+    <div style={{fontSize:12,letterSpacing:4,color:"#666",marginTop:6,fontWeight:500}}>FREE · UNCENSORED · SOCIAL · EXPRESSION</div>
+    <p style={{fontSize:18,fontWeight:300,color:"rgba(240,237,232,0.6)",marginTop:24}}>Where <span style={{color:FIRE,fontWeight:600}}>every voice</span> ignites something real.</p>
+    <div style={{display:"flex",flexDirection:"column",gap:12,marginTop:40,width:280,margin:"40px auto 0"}}>
+      <button onClick={onEnter} style={{background:FIRE,color:"#fff",border:"none",padding:"15px 32px",fontSize:15,fontWeight:700,borderRadius:6,cursor:"pointer",letterSpacing:0.5}}>Join FUSE — It's Free</button>
+      <button onClick={onEnter} style={{background:"transparent",color:"#F0EDE8",border:"1px solid rgba(255,255,255,0.12)",padding:"15px 32px",fontSize:15,fontWeight:500,borderRadius:6,cursor:"pointer"}}>Sign In</button>
+    </div>
+    <div style={{display:"flex",gap:20,marginTop:40,flexWrap:"wrap",justifyContent:"center"}}>
+      {["Free Speech","No Cancel Culture","Clean Platform","Real People"].map(v=>(
+        <div key={v} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#666"}}>
+          <span style={{width:6,height:6,borderRadius:"50%",background:FIRE,display:"inline-block"}}/>  {v}
+        </div>
+      ))}
+    </div>
+  </div>
+</div>
+)
+}
+
+function FeedScreen(){
+const[activeTab,setActiveTab]=useState("For You");
+return(
+<div style={{display:"flex",flex:1}}>
+  <div style={{flex:1,borderRight:"1px solid rgba(255,255,255,0.07)"}}>
+    <div style={{padding:"14px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:56,background:"rgba(10,10,10,0.95)",backdropFilter:"blur(12px)",zIndex:10}}>
+      <div style={{fontSize:20,fontWeight:900,letterSpacing:2}}>FEED</div>
+      <div style={{display:"flex",gap:4}}>
+        {["For You","Following","Trending"].map(t=>(
+          <button key={t} onClick={()=>setActiveTab(t)} style={{padding:"5px 12px",borderRadius:4,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:activeTab===t?FIRE:"transparent",color:activeTab===t?"#fff":"#666",transition:"all 0.15s"}}>{t}</button>
+        ))}
+      </div>
+    </div>
+    <div style={{padding:16,borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",gap:10}}>
+      <Avatar letter="N" size={38}/>
+      <div style={{flex:1}}>
+        <textarea style={{width:"100%",background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.07)",borderRadius:8,padding:"10px 14px",color:"#F0EDE8",fontFamily:"inherit",fontSize:14,resize:"none",outline:"none",height:72}} placeholder="What's on your mind? Speak freely."/>
+        <div style={{display:"flex",justifyContent:"flex-end",marginTop:8}}>
+          <button style={{background:FIRE,color:"#fff",border:"none",padding:"8px 20px",borderRadius:4,fontSize:13,fontWeight:800,cursor:"pointer",letterSpacing:1}}>FUSE IT ⚡</button>
+        </div>
+      </div>
+    </div>
+    {POSTS.map(p=><PostCard key={p.id} post={p}/>)}
+  </div>
+  <div style={{width:260,padding:"16px 14px",flexShrink:0,display:"none"}}>
+  </div>
+</div>
+)
+}
+
+function CommunitiesScreen(){
+return(
+<div style={{flex:1}}>
+  <div style={{padding:"20px 20px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+    <div style={{fontSize:32,fontWeight:900,letterSpacing:3,fontFamily:"'Bebas Neue',sans-serif"}}>GROUNDS</div>
+    <div style={{fontSize:13,color:"#666",marginBottom:16}}>Communities built on honesty. Find your people.</div>
+    <div style={{display:"flex",alignItems:"center",gap:8,background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.07)",borderRadius:6,padding:"10px 14px",marginBottom:16}}>
+      <span style={{color:"#555"}}>🔍</span>
+      <input style={{flex:1,background:"none",border:"none",outline:"none",color:"#F0EDE8",fontSize:14,fontFamily:"inherit"}} placeholder="Search Grounds..."/>
+    </div>
+  </div>
+  <div style={{padding:"16px 20px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+    {GROUNDS.map(g=>(
+      <div key={g.name} style={{background:"#111",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,overflow:"hidden",cursor:"pointer"}}>
+        <div style={{height:52,background:g.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>{g.emoji}</div>
+        <div style={{padding:12}}>
+          <div style={{fontSize:14,fontWeight:700,marginBottom:4}}>{g.name}</div>
+          <div style={{fontSize:12,color:"#666",lineHeight:1.5,marginBottom:10}}>{g.desc}</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <span style={{fontSize:11,color:"#555",fontFamily:"monospace"}}>{g.members} members</span>
+            <button style={{background:"none",border:"1px solid rgba(255,255,255,0.12)",color:"#F0EDE8",fontSize:11,fontWeight:600,padding:"4px 10px",borderRadius:4,cursor:"pointer"}}>Join</button>
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+</div>
+)
+}
+
+function ProfileScreen(){
+return(
+<div style={{flex:1,maxWidth:680}}>
+  <div style={{height:140,background:"linear-gradient(135deg,#1a0a00 0%,#2d1200 50%,rgba(255,77,28,0.12) 100%)"}}/>
+  <div style={{padding:"0 20px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+    <div style={{marginTop:-28,marginBottom:10,display:"inline-block"}}>
+      <Avatar letter="N" size={72}/>
+    </div>
+    <div style={{fontSize:20,fontWeight:800,marginBottom:2}}>Navi Leeroy Chauke <span style={{color:FIRE,fontSize:16}}>✦</span></div>
+    <div style={{fontSize:12,color:"#666",fontFamily:"monospace",marginBottom:10}}>@navileeroy · Founder of FUSE</div>
+    <div style={{fontSize:14,color:"rgba(240,237,232,0.72)",lineHeight:1.6,marginBottom:14}}>Graphic designer. Entrepreneur. Builder. 22 y/o from Zimbabwe 🇿🇼 building the world's most honest social platform. Free speech is non-negotiable.</div>
+    <div style={{display:"flex",gap:20,marginBottom:14}}>
+      {[["247","Posts"],["14.2K","Followers"],["891","Following"],["$1,240","Earned"]].map(([num,label])=>(
+        <div key={label} style={{cursor:"pointer"}}>
+          <div style={{fontSize:20,fontWeight:900,color:label==="Earned"?AMBER:"#F0EDE8"}}>{num}</div>
+          <div style={{fontSize:11,color:"#666"}}>{label}</div>
+        </div>
+      ))}
+    </div>
+    <div style={{display:"flex",gap:8}}>
+      <button style={{background:FIRE,color:"#fff",border:"none",padding:"8px 18px",borderRadius:4,fontSize:13,fontWeight:700,cursor:"pointer"}}>Edit Profile</button>
+      <button style={{background:"none",border:"1px solid rgba(255,255,255,0.12)",color:"#F0EDE8",padding:"8px 18px",borderRadius:4,fontSize:13,fontWeight:600,cursor:"pointer"}}>Share</button>
+      <button style={{background:"none",border:"1px solid rgba(255,171,0,0.3)",color:AMBER,padding:"8px 18px",borderRadius:4,fontSize:13,fontWeight:600,cursor:"pointer"}}>⚡ Go Pro</button>
+    </div>
+  </div>
+  {POSTS.filter(p=>p.author==="Navi Leeroy Chauke").map(p=><PostCard key={p.id} post={p}/>)}
+</div>
+)
+}
+
+function App(){
+const[screen,setScreen]=useState("splash");
+const SCREENS=["splash","feed","communities","profile"];
+const LABELS=["HOME","FEED","GROUNDS","PROFILE"];
+return(
+<div style={{fontFamily:"'DM Sans','Segoe UI',sans-serif",background:"#0A0A0A",color:"#F0EDE8",minHeight:"100vh",display:"flex",flexDirection:"column"}}>
+  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)",background:"rgba(10,10,10,0.97)",position:"sticky",top:0,zIndex:50}}>
+    <div style={{display:"flex",alignItems:"center",gap:8}}>
+      <FuseLogo/>
+      <div style={{fontSize:26,fontWeight:900,letterSpacing:6,background:`linear-gradient(135deg,#fff 30%,${FIRE} 100%)`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"'Bebas Neue',sans-serif"}}>FUSE</div>
+    </div>
+    <div style={{display:"flex",gap:3,background:"#111",borderRadius:8,padding:4,border:"1px solid rgba(255,255,255,0.07)"}}>
+      {SCREENS.map((s,i)=>(
+        <button key={s} onClick={()=>setScreen(s)} style={{padding:"6px 12px",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",letterSpacing:1,background:screen===s?FIRE:"transparent",color:screen===s?"#fff":"#888",transition:"all 0.15s"}}>{LABELS[i]}</button>
+      ))}
+    </div>
+  </div>
+  {screen==="splash"&&<SplashScreen onEnter={()=>setScreen("feed")}/>}
+  {screen==="feed"&&<FeedScreen/>}
+  {screen==="communities"&&<CommunitiesScreen/>}
+  {screen==="profile"&&<ProfileScreen/>}
+</div>
+)
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
