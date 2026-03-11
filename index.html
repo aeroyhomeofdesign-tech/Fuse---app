@@ -23,7 +23,8 @@ input,textarea{font-family:'DM Sans',sans-serif}
 
 const SUPABASE_URL = "https://vdpyyzbeceyykptstzgr.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkcHl5emJlY2V5eWtwdHN0emdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMzQ3NjMsImV4cCI6MjA4ODgxMDc2M30.K9afo60MWax8EKb5RNYCRheazS-oeIxgWs8HPMHJTg0";
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const { createClient } = window.supabase;
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const FIRE="#FF4D1C", AMBER="#FFAB00";
 const {useState, useEffect} = React;
