@@ -185,197 +185,59 @@ return(
 );
 }
 
-function AnalyticsScreen({currentUser}){
-const[stats,setStats]=useState(null);
-const[loading,setLoading]=useState(true);
-const[topCreators,setTopCreators]=useState([]);
-const[topGrounds,setTopGrounds]=useState([]);
-const[recentActivity,setRecentActivity]=useState([]);
-const[postsByDay,setPostsByDay]=useState([]);
+function EditProfileModal({currentUser,onClose,addToast,onSaved}){
 const username=currentUser?.user_metadata?.username||currentUser?.email?.split("@")[0]||"user";
-
-useEffect(()=>{loadAll();},[]);
-
-const loadAll=async()=>{
-setLoading(true);
-const[posts,follows,comments,likes,grounds,messages]=await Promise.all([
-supabase.from('posts').select('*',{count:'exact'}),
-supabase.from('follows').select('*',{count:'exact'}),
-supabase.from('comments').select('*',{count:'exact'}),
-supabase.from('post_likes').select('*',{count:'exact'}),
-supabase.from('grounds').select('*',{count:'exact'}),
-supabase.from('messages').select('*',{count:'exact'}),
-]);
-
-const allPosts=posts.data||[];
-const uniqueUsers=[...new Set(allPosts.map(p=>p.username))];
-
-// top creators
-const creatorMap={};
-allPosts.forEach(p=>{creatorMap[p.username]=(creatorMap[p.username]||0)+1;});
-const creators=Object.entries(creatorMap).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([u,c])=>({username:u,posts:c}));
-setTopCreators(creators);
-
-// top grounds
-const groundMap={};
-allPosts.forEach(p=>{if(p.ground)groundMap[p.ground]=(groundMap[p.ground]||0)+1;});
-const gList=Object.entries(groundMap).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([g,c])=>({ground:g,posts:c}));
-setTopGrounds(gList);
-
-// posts by day (last 7 days)
-const days=[];
-for(let i=6;i>=0;i--){
-const d=new Date();d.setDate(d.getDate()-i);
-const dayStr=d.toLocaleDateString('en',{weekday:'short'});
-const count=allPosts.filter(p=>{
-const pd=new Date(p.created_at);
-return pd.toDateString()===d.toDateString();
-}).length;
-days.push({day:dayStr,count});
-}
-setPostsByDay(days);
-
-// my stats
-const myPosts=allPosts.filter(p=>p.username===username).length;
-const{count:myFollowers}=await supabase.from('follows').select('id',{count:'exact'}).eq('following',username);
-const{count:myLikes}=await supabase.from('post_likes').select('id',{count:'exact'}).eq('username',username);
-
-setStats({
-totalPosts:posts.count||0,
-totalUsers:uniqueUsers.length,
-totalFollows:follows.count||0,
-totalComments:comments.count||0,
-totalLikes:likes.count||0,
-totalGrounds:grounds.count||0,
-totalMessages:messages.count||0,
-myPosts,
-myFollowers:myFollowers||0,
-myLikes:myLikes||0,
+const[displayName,setDisplayName]=useState("");
+const[bio,setBio]=useState("");
+const[website,setWebsite]=useState("");
+const[location,setLocation]=useState("");
+const[loading,setLoading]=useState(false);
+const[fetching,setFetching]=useState(true);
+useEffect(()=>{
+supabase.from('profiles').select('*').eq('username',username).single().then(({data})=>{
+if(data){setDisplayName(data.display_name||"");setBio(data.bio||"");setWebsite(data.website||"");setLocation(data.location||"");}
+setFetching(false);
 });
+},[username]);
+const save=async()=>{
+setLoading(true);
+const{error}=await supabase.from('profiles').upsert({username,display_name:displayName,bio,website,location,updated_at:new Date().toISOString()},{onConflict:'username'});
+if(error){addToast({icon:"❌",title:"ERROR",message:error.message,color:FIRE});}
+else{addToast({icon:"✅",title:"PROFILE UPDATED",message:"Your profile has been saved!",color:"#10b981"});if(onSaved)onSaved({displayName,bio,website,location});onClose();}
 setLoading(false);
 };
-
-if(loading)return(
-<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,minHeight:300}}>
-<div style={{fontSize:32,animation:"spin 1s linear infinite",display:"inline-block"}}>⚡</div>
-<div style={{fontSize:14,color:"#555"}}>Loading analytics...</div>
-</div>
-);
-
-const maxDay=Math.max(...postsByDay.map(d=>d.count),1);
-
+const inp={width:"100%",background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,padding:"12px 14px",color:"#F0EDE8",fontSize:14,outline:"none",marginBottom:4};
 return(
-<div style={{flex:1,paddingBottom:40}}>
-<div style={{padding:"20px 20px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)",position:"sticky",top:56,background:"rgba(10,10,10,0.97)",backdropFilter:"blur(12px)",zIndex:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-<div>
-<div style={{fontSize:32,fontWeight:900,letterSpacing:3,fontFamily:"'Bebas Neue',sans-serif"}}>ANALYTICS</div>
-<div style={{fontSize:13,color:"#666",marginTop:2}}>FUSE platform overview</div>
+<div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
+<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.85)"}} onClick={onClose}/>
+<div style={{position:"relative",zIndex:301,background:"#111",width:"100%",maxWidth:420,borderRadius:14,border:"1px solid rgba(255,255,255,0.1)",padding:24,maxHeight:"90vh",overflowY:"auto"}}>
+<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+<div style={{fontSize:18,fontWeight:900,letterSpacing:2}}>EDIT PROFILE</div>
+<button onClick={onClose} style={{background:"none",border:"none",color:"#666",fontSize:20,cursor:"pointer"}}>×</button>
 </div>
-<button onClick={loadAll} style={{background:"rgba(255,77,28,0.15)",border:`1px solid rgba(255,77,28,0.3)`,color:FIRE,padding:"8px 14px",borderRadius:6,fontSize:12,fontWeight:700,cursor:"pointer"}}>↻ Refresh</button>
+{fetching?<div style={{textAlign:"center",padding:32,color:"#555"}}>⚡</div>:<>
+<div style={{marginBottom:14}}>
+<div style={{fontSize:12,color:"#666",marginBottom:6,letterSpacing:1}}>DISPLAY NAME</div>
+<input value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="Your full name" maxLength={50} style={inp}/>
 </div>
-
-<div style={{padding:"20px 16px 0"}}>
-<div style={{fontSize:11,color:"#555",letterSpacing:2,fontWeight:700,marginBottom:12}}>📊 PLATFORM STATS</div>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
-{[
-{label:"Total Posts",value:stats.totalPosts,icon:"📝",color:FIRE},
-{label:"Total Users",value:stats.totalUsers,icon:"👥",color:"#10b981"},
-{label:"Total Likes",value:stats.totalLikes,icon:"♥",color:"#ec4899"},
-{label:"Comments",value:stats.totalComments,icon:"💬",color:"#8b5cf6"},
-{label:"Follows",value:stats.totalFollows,icon:"➕",color:AMBER},
-{label:"Grounds",value:stats.totalGrounds,icon:"🌍",color:"#06b6d4"},
-{label:"Messages",value:stats.totalMessages,icon:"✉️",color:"#f59e0b"},
-{label:"Active Users",value:stats.totalUsers,icon:"🔥",color:FIRE},
-].map(s=>(
-<div key={s.label} className="count-up" style={{background:"#111",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"14px 16px",display:"flex",flexDirection:"column",gap:4}}>
-<div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-<span style={{fontSize:20}}>{s.icon}</span>
-<span style={{fontSize:24,fontWeight:900,color:s.color}}>{s.value}</span>
+<div style={{marginBottom:14}}>
+<div style={{fontSize:12,color:"#666",marginBottom:6,letterSpacing:1}}>BIO</div>
+<textarea value={bio} onChange={e=>setBio(e.target.value)} placeholder="Tell the world about yourself..." maxLength={160} style={{...inp,resize:"none",height:90}}/>
+<div style={{fontSize:11,color:"#555",textAlign:"right"}}>{bio.length}/160</div>
 </div>
-<div style={{fontSize:11,color:"#666",letterSpacing:0.5}}>{s.label}</div>
+<div style={{marginBottom:14}}>
+<div style={{fontSize:12,color:"#666",marginBottom:6,letterSpacing:1}}>LOCATION</div>
+<input value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g. Harare, Zimbabwe 🇿🇼" maxLength={50} style={inp}/>
 </div>
-))}
+<div style={{marginBottom:20}}>
+<div style={{fontSize:12,color:"#666",marginBottom:6,letterSpacing:1}}>WEBSITE</div>
+<input value={website} onChange={e=>setWebsite(e.target.value)} placeholder="https://yourwebsite.com" maxLength={100} style={inp}/>
 </div>
-
-<div style={{fontSize:11,color:"#555",letterSpacing:2,fontWeight:700,marginBottom:12}}>👤 YOUR STATS</div>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:20}}>
-{[
-{label:"Your Posts",value:stats.myPosts,icon:"📝",color:FIRE},
-{label:"Followers",value:stats.myFollowers,icon:"👥",color:"#10b981"},
-{label:"Likes Given",value:stats.myLikes,icon:"♥",color:"#ec4899"},
-].map(s=>(
-<div key={s.label} className="count-up" style={{background:"#111",border:`1px solid ${s.color}22`,borderRadius:10,padding:"12px",textAlign:"center"}}>
-<div style={{fontSize:18,marginBottom:4}}>{s.icon}</div>
-<div style={{fontSize:22,fontWeight:900,color:s.color,marginBottom:2}}>{s.value}</div>
-<div style={{fontSize:10,color:"#555"}}>{s.label}</div>
+<div style={{display:"flex",gap:8}}>
+<button onClick={onClose} style={{flex:1,background:"transparent",color:"#888",border:"1px solid rgba(255,255,255,0.1)",padding:"12px",borderRadius:6,fontSize:14,cursor:"pointer"}}>Cancel</button>
+<button onClick={save} disabled={loading} style={{flex:2,background:loading?"#333":FIRE,color:"#fff",border:"none",padding:"12px",borderRadius:6,fontSize:14,fontWeight:700,cursor:"pointer"}}>{loading?"Saving...":"Save Profile ✓"}</button>
 </div>
-))}
-</div>
-
-<div style={{fontSize:11,color:"#555",letterSpacing:2,fontWeight:700,marginBottom:12}}>📈 POSTS THIS WEEK</div>
-<div style={{background:"#111",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"16px",marginBottom:20}}>
-<div style={{display:"flex",alignItems:"flex-end",gap:6,height:80,justifyContent:"space-between"}}>
-{postsByDay.map((d,i)=>(
-<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-<div style={{fontSize:10,color:FIRE,fontWeight:700}}>{d.count>0?d.count:""}</div>
-<div style={{
-width:"100%",
-height:d.count===0?4:Math.max(8,(d.count/maxDay)*60),
-background:d.count===0?"#1A1A1A":`linear-gradient(to top,${FIRE},${AMBER})`,
-borderRadius:4,
-transition:"height 0.5s ease",
-minHeight:4,
-}}/>
-<div style={{fontSize:10,color:"#555"}}>{d.day}</div>
-</div>
-))}
-</div>
-</div>
-
-<div style={{fontSize:11,color:"#555",letterSpacing:2,fontWeight:700,marginBottom:12}}>🏆 TOP CREATORS</div>
-<div style={{background:"#111",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,overflow:"hidden",marginBottom:20}}>
-{topCreators.length===0&&<div style={{padding:20,textAlign:"center",color:"#555",fontSize:13}}>No data yet</div>}
-{topCreators.map((c,i)=>(
-<div key={c.username} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:i<topCreators.length-1?"1px solid rgba(255,255,255,0.05)":"none"}}>
-<div style={{width:24,height:24,borderRadius:"50%",background:i===0?"linear-gradient(135deg,#FFD700,#FFA500)":i===1?"linear-gradient(135deg,#C0C0C0,#A0A0A0)":i===2?"linear-gradient(135deg,#CD7F32,#A0522D)":"#1A1A1A",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:i<3?"#000":"#555",flexShrink:0}}>
-{i+1}
-</div>
-<Avatar letter={c.username[0].toUpperCase()} username={c.username} size={36}/>
-<div style={{flex:1}}>
-<div style={{fontSize:14,fontWeight:700}}>@{c.username}</div>
-<div style={{fontSize:11,color:"#555",marginTop:2}}>{c.posts} posts</div>
-</div>
-<div style={{textAlign:"right"}}>
-<div style={{width:80,height:6,background:"#1A1A1A",borderRadius:3,overflow:"hidden"}}>
-<div style={{height:"100%",background:`linear-gradient(to right,${FIRE},${AMBER})`,width:`${(c.posts/topCreators[0].posts)*100}%`,borderRadius:3}}/>
-</div>
-</div>
-</div>
-))}
-</div>
-
-<div style={{fontSize:11,color:"#555",letterSpacing:2,fontWeight:700,marginBottom:12}}>🌍 TOP GROUNDS</div>
-<div style={{background:"#111",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,overflow:"hidden",marginBottom:20}}>
-{topGrounds.length===0&&<div style={{padding:20,textAlign:"center",color:"#555",fontSize:13}}>No data yet</div>}
-{topGrounds.map((g,i)=>(
-<div key={g.ground} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:i<topGrounds.length-1?"1px solid rgba(255,255,255,0.05)":"none"}}>
-<div style={{fontSize:11,fontWeight:700,color:"#555",width:16,textAlign:"center"}}>#{i+1}</div>
-<div style={{flex:1}}>
-<div style={{fontSize:14,fontWeight:700}}>{g.ground}</div>
-<div style={{fontSize:11,color:"#555",marginTop:2}}>{g.posts} posts</div>
-</div>
-<div style={{width:80,height:6,background:"#1A1A1A",borderRadius:3,overflow:"hidden"}}>
-<div style={{height:"100%",background:`linear-gradient(to right,${AMBER},${FIRE})`,width:`${(g.posts/topGrounds[0].posts)*100}%`,borderRadius:3}}/>
-</div>
-</div>
-))}
-</div>
-
-<div style={{background:"linear-gradient(135deg,rgba(255,77,28,0.08),rgba(255,171,0,0.08))",border:"1px solid rgba(255,77,28,0.15)",borderRadius:10,padding:"16px",textAlign:"center"}}>
-<div style={{fontSize:20,marginBottom:6}}>🇿🇼</div>
-<div style={{fontSize:14,fontWeight:700,marginBottom:4}}>Built from Zimbabwe</div>
-<div style={{fontSize:12,color:"#888",lineHeight:1.6}}>FUSE is growing. Every user, post and like is proof that your vision is real. Keep building. 🔥</div>
-</div>
+</>}
 </div>
 </div>
 );
@@ -707,16 +569,8 @@ await supabase.from('grounds').delete().eq('id',ground.id);
 addToast({icon:"🗑",title:"GROUND DELETED",message:`${ground.name} has been removed.`,color:"#666"});
 onBack();
 };
-const pickImage=(e)=>{
-const file=e.target.files[0];if(!file)return;
-setVideoFile(null);setVideoPreview(null);
-setImageFile(file);const r=new FileReader();r.onload=ev=>setImagePreview(ev.target.result);r.readAsDataURL(file);
-};
-const pickVideo=(e)=>{
-const file=e.target.files[0];if(!file)return;
-setImageFile(null);setImagePreview(null);
-setVideoFile(file);setVideoPreview(URL.createObjectURL(file));
-};
+const pickImage=(e)=>{const file=e.target.files[0];if(!file)return;setVideoFile(null);setVideoPreview(null);setImageFile(file);const r=new FileReader();r.onload=ev=>setImagePreview(ev.target.result);r.readAsDataURL(file);};
+const pickVideo=(e)=>{const file=e.target.files[0];if(!file)return;setImageFile(null);setImagePreview(null);setVideoFile(file);setVideoPreview(URL.createObjectURL(file));};
 const submitPost=async()=>{
 if(!newPost.trim()&&!imageFile&&!videoFile)return;setLoading(true);setUploadProgress(0);
 let image_url=null;let video_url=null;
@@ -864,11 +718,13 @@ function UserProfileModal({username,currentUser,onClose,addToast,onDM}){
 const[posts,setPosts]=useState([]);
 const[fc,setFc]=useState(0);
 const[fgc,setFgc]=useState(0);
+const[profile,setProfile]=useState(null);
 const cu=currentUser?.user_metadata?.username||currentUser?.email?.split("@")[0]||"user";
 useEffect(()=>{
 supabase.from('posts').select('*').eq('username',username).order('created_at',{ascending:false}).then(({data})=>setPosts(data||[]));
 supabase.from('follows').select('id',{count:'exact'}).eq('following',username).then(({count})=>setFc(count||0));
 supabase.from('follows').select('id',{count:'exact'}).eq('follower',username).then(({count})=>setFgc(count||0));
+supabase.from('profiles').select('*').eq('username',username).single().then(({data})=>setProfile(data));
 },[username]);
 return(
 <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",flexDirection:"column"}}>
@@ -886,8 +742,13 @@ return(
 <FollowButton currentUsername={cu} targetUsername={username} onFollow={(u)=>addToast({icon:"👥",title:"NOW FOLLOWING",message:`Following @${u}!`,color:"#10b981"})}/>
 </div>
 </div>
-<div style={{fontSize:18,fontWeight:800,marginBottom:2}}>@{username} <span style={{color:FIRE}}>✦</span></div>
-<div style={{fontSize:12,color:"#666",marginBottom:12}}>FUSE Member</div>
+<div style={{fontSize:18,fontWeight:800,marginBottom:2}}>{profile?.display_name||username} <span style={{color:FIRE}}>✦</span></div>
+<div style={{fontSize:12,color:"#666",marginBottom:6}}>@{username} · FUSE Member</div>
+{profile?.bio&&<div style={{fontSize:13,color:"rgba(240,237,232,0.7)",lineHeight:1.6,marginBottom:8}}>{profile.bio}</div>}
+<div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
+{profile?.location&&<div style={{fontSize:12,color:"#666"}}>📍 {profile.location}</div>}
+{profile?.website&&<a href={profile.website} target="_blank" style={{fontSize:12,color:AMBER,textDecoration:"none"}}>🔗 {profile.website.replace("https://","")}</a>}
+</div>
 <div style={{display:"flex",gap:20}}>
 {[[posts.length,"Posts"],[fc,"Followers"],[fgc,"Following"]].map(([n,l])=>(
 <div key={l}><div style={{fontSize:18,fontWeight:900}}>{n}</div><div style={{fontSize:11,color:"#666"}}>{l}</div></div>
@@ -1028,16 +889,8 @@ setFetching(true);
 const{data}=await supabase.from('posts').select('*').order('created_at',{ascending:false}).limit(50);
 if(data)setPosts(data);setFetching(false);
 };
-const pickImage=(e)=>{
-const file=e.target.files[0];if(!file)return;
-setVideoFile(null);setVideoPreview(null);
-setImageFile(file);const r=new FileReader();r.onload=ev=>setImagePreview(ev.target.result);r.readAsDataURL(file);
-};
-const pickVideo=(e)=>{
-const file=e.target.files[0];if(!file)return;
-setImageFile(null);setImagePreview(null);
-setVideoFile(file);setVideoPreview(URL.createObjectURL(file));
-};
+const pickImage=(e)=>{const file=e.target.files[0];if(!file)return;setVideoFile(null);setVideoPreview(null);setImageFile(file);const r=new FileReader();r.onload=ev=>setImagePreview(ev.target.result);r.readAsDataURL(file);};
+const pickVideo=(e)=>{const file=e.target.files[0];if(!file)return;setImageFile(null);setImagePreview(null);setVideoFile(file);setVideoPreview(URL.createObjectURL(file));};
 const submitPost=async()=>{
 if(!newPost.trim()&&!imageFile&&!videoFile)return;setLoading(true);setUploadProgress(0);
 let image_url=null;let video_url=null;
@@ -1081,18 +934,134 @@ posts.map(p=><PostCard key={p.id} post={p} currentUser={user} addToast={addToast
 );
 }
 
+function AnalyticsScreen({currentUser}){
+const[stats,setStats]=useState(null);
+const[loading,setLoading]=useState(true);
+const[topCreators,setTopCreators]=useState([]);
+const[topGrounds,setTopGrounds]=useState([]);
+const[postsByDay,setPostsByDay]=useState([]);
+const username=currentUser?.user_metadata?.username||currentUser?.email?.split("@")[0]||"user";
+useEffect(()=>{loadAll();},[]);
+const loadAll=async()=>{
+setLoading(true);
+const[posts,follows,comments,likes,grounds,messages]=await Promise.all([
+supabase.from('posts').select('*',{count:'exact'}),
+supabase.from('follows').select('*',{count:'exact'}),
+supabase.from('comments').select('*',{count:'exact'}),
+supabase.from('post_likes').select('*',{count:'exact'}),
+supabase.from('grounds').select('*',{count:'exact'}),
+supabase.from('messages').select('*',{count:'exact'}),
+]);
+const allPosts=posts.data||[];
+const uniqueUsers=[...new Set(allPosts.map(p=>p.username))];
+const creatorMap={};
+allPosts.forEach(p=>{creatorMap[p.username]=(creatorMap[p.username]||0)+1;});
+setTopCreators(Object.entries(creatorMap).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([u,c])=>({username:u,posts:c})));
+const groundMap={};
+allPosts.forEach(p=>{if(p.ground)groundMap[p.ground]=(groundMap[p.ground]||0)+1;});
+setTopGrounds(Object.entries(groundMap).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([g,c])=>({ground:g,posts:c})));
+const days=[];
+for(let i=6;i>=0;i--){
+const d=new Date();d.setDate(d.getDate()-i);
+const dayStr=d.toLocaleDateString('en',{weekday:'short'});
+const count=allPosts.filter(p=>new Date(p.created_at).toDateString()===d.toDateString()).length;
+days.push({day:dayStr,count});
+}
+setPostsByDay(days);
+const myPosts=allPosts.filter(p=>p.username===username).length;
+const{count:myFollowers}=await supabase.from('follows').select('id',{count:'exact'}).eq('following',username);
+const{count:myLikes}=await supabase.from('post_likes').select('id',{count:'exact'}).eq('username',username);
+setStats({totalPosts:posts.count||0,totalUsers:uniqueUsers.length,totalFollows:follows.count||0,totalComments:comments.count||0,totalLikes:likes.count||0,totalGrounds:grounds.count||0,totalMessages:messages.count||0,myPosts,myFollowers:myFollowers||0,myLikes:myLikes||0});
+setLoading(false);
+};
+if(loading)return(<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,minHeight:300}}><div style={{fontSize:32,animation:"spin 1s linear infinite",display:"inline-block"}}>⚡</div><div style={{fontSize:14,color:"#555"}}>Loading analytics...</div></div>);
+const maxDay=Math.max(...postsByDay.map(d=>d.count),1);
+return(
+<div style={{flex:1,paddingBottom:40}}>
+<div style={{padding:"20px 20px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)",position:"sticky",top:56,background:"rgba(10,10,10,0.97)",backdropFilter:"blur(12px)",zIndex:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+<div><div style={{fontSize:32,fontWeight:900,letterSpacing:3,fontFamily:"'Bebas Neue',sans-serif"}}>ANALYTICS</div><div style={{fontSize:13,color:"#666",marginTop:2}}>FUSE platform overview</div></div>
+<button onClick={loadAll} style={{background:"rgba(255,77,28,0.15)",border:`1px solid rgba(255,77,28,0.3)`,color:FIRE,padding:"8px 14px",borderRadius:6,fontSize:12,fontWeight:700,cursor:"pointer"}}>↻ Refresh</button>
+</div>
+<div style={{padding:"20px 16px 0"}}>
+<div style={{fontSize:11,color:"#555",letterSpacing:2,fontWeight:700,marginBottom:12}}>📊 PLATFORM STATS</div>
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+{[{label:"Total Posts",value:stats.totalPosts,icon:"📝",color:FIRE},{label:"Total Users",value:stats.totalUsers,icon:"👥",color:"#10b981"},{label:"Total Likes",value:stats.totalLikes,icon:"♥",color:"#ec4899"},{label:"Comments",value:stats.totalComments,icon:"💬",color:"#8b5cf6"},{label:"Follows",value:stats.totalFollows,icon:"➕",color:AMBER},{label:"Grounds",value:stats.totalGrounds,icon:"🌍",color:"#06b6d4"},{label:"Messages",value:stats.totalMessages,icon:"✉️",color:"#f59e0b"},{label:"Active Users",value:stats.totalUsers,icon:"🔥",color:FIRE}].map(s=>(
+<div key={s.label} className="count-up" style={{background:"#111",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"14px 16px",display:"flex",flexDirection:"column",gap:4}}>
+<div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}><span style={{fontSize:20}}>{s.icon}</span><span style={{fontSize:24,fontWeight:900,color:s.color}}>{s.value}</span></div>
+<div style={{fontSize:11,color:"#666",letterSpacing:0.5}}>{s.label}</div>
+</div>
+))}
+</div>
+<div style={{fontSize:11,color:"#555",letterSpacing:2,fontWeight:700,marginBottom:12}}>👤 YOUR STATS</div>
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:20}}>
+{[{label:"Your Posts",value:stats.myPosts,icon:"📝",color:FIRE},{label:"Followers",value:stats.myFollowers,icon:"👥",color:"#10b981"},{label:"Likes Given",value:stats.myLikes,icon:"♥",color:"#ec4899"}].map(s=>(
+<div key={s.label} className="count-up" style={{background:"#111",border:`1px solid ${s.color}22`,borderRadius:10,padding:"12px",textAlign:"center"}}>
+<div style={{fontSize:18,marginBottom:4}}>{s.icon}</div>
+<div style={{fontSize:22,fontWeight:900,color:s.color,marginBottom:2}}>{s.value}</div>
+<div style={{fontSize:10,color:"#555"}}>{s.label}</div>
+</div>
+))}
+</div>
+<div style={{fontSize:11,color:"#555",letterSpacing:2,fontWeight:700,marginBottom:12}}>📈 POSTS THIS WEEK</div>
+<div style={{background:"#111",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"16px",marginBottom:20}}>
+<div style={{display:"flex",alignItems:"flex-end",gap:6,height:80,justifyContent:"space-between"}}>
+{postsByDay.map((d,i)=>(
+<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+<div style={{fontSize:10,color:FIRE,fontWeight:700}}>{d.count>0?d.count:""}</div>
+<div style={{width:"100%",height:d.count===0?4:Math.max(8,(d.count/maxDay)*60),background:d.count===0?"#1A1A1A":`linear-gradient(to top,${FIRE},${AMBER})`,borderRadius:4,transition:"height 0.5s ease",minHeight:4}}/>
+<div style={{fontSize:10,color:"#555"}}>{d.day}</div>
+</div>
+))}
+</div>
+</div>
+<div style={{fontSize:11,color:"#555",letterSpacing:2,fontWeight:700,marginBottom:12}}>🏆 TOP CREATORS</div>
+<div style={{background:"#111",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,overflow:"hidden",marginBottom:20}}>
+{topCreators.length===0&&<div style={{padding:20,textAlign:"center",color:"#555",fontSize:13}}>No data yet</div>}
+{topCreators.map((c,i)=>(
+<div key={c.username} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:i<topCreators.length-1?"1px solid rgba(255,255,255,0.05)":"none"}}>
+<div style={{width:24,height:24,borderRadius:"50%",background:i===0?"linear-gradient(135deg,#FFD700,#FFA500)":i===1?"linear-gradient(135deg,#C0C0C0,#A0A0A0)":i===2?"linear-gradient(135deg,#CD7F32,#A0522D)":"#1A1A1A",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:i<3?"#000":"#555",flexShrink:0}}>{i+1}</div>
+<Avatar letter={c.username[0].toUpperCase()} username={c.username} size={36}/>
+<div style={{flex:1}}><div style={{fontSize:14,fontWeight:700}}>@{c.username}</div><div style={{fontSize:11,color:"#555",marginTop:2}}>{c.posts} posts</div></div>
+<div style={{width:80,height:6,background:"#1A1A1A",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:`linear-gradient(to right,${FIRE},${AMBER})`,width:`${(c.posts/topCreators[0].posts)*100}%`,borderRadius:3}}/></div>
+</div>
+))}
+</div>
+<div style={{fontSize:11,color:"#555",letterSpacing:2,fontWeight:700,marginBottom:12}}>🌍 TOP GROUNDS</div>
+<div style={{background:"#111",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,overflow:"hidden",marginBottom:20}}>
+{topGrounds.length===0&&<div style={{padding:20,textAlign:"center",color:"#555",fontSize:13}}>No data yet</div>}
+{topGrounds.map((g,i)=>(
+<div key={g.ground} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:i<topGrounds.length-1?"1px solid rgba(255,255,255,0.05)":"none"}}>
+<div style={{fontSize:11,fontWeight:700,color:"#555",width:16,textAlign:"center"}}>#{i+1}</div>
+<div style={{flex:1}}><div style={{fontSize:14,fontWeight:700}}>{g.ground}</div><div style={{fontSize:11,color:"#555",marginTop:2}}>{g.posts} posts</div></div>
+<div style={{width:80,height:6,background:"#1A1A1A",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:`linear-gradient(to right,${AMBER},${FIRE})`,width:`${(g.posts/topGrounds[0].posts)*100}%`,borderRadius:3}}/></div>
+</div>
+))}
+</div>
+<div style={{background:"linear-gradient(135deg,rgba(255,77,28,0.08),rgba(255,171,0,0.08))",border:"1px solid rgba(255,77,28,0.15)",borderRadius:10,padding:"16px",textAlign:"center"}}>
+<div style={{fontSize:20,marginBottom:6}}>🇿🇼</div>
+<div style={{fontSize:14,fontWeight:700,marginBottom:4}}>Built from Zimbabwe</div>
+<div style={{fontSize:12,color:"#888",lineHeight:1.6}}>FUSE is growing. Every user, post and like is proof that your vision is real. Keep building. 🔥</div>
+</div>
+</div>
+</div>
+);
+}
+
 function ProfileScreen({user,onSignOut,addToast,onUserClick,onDM}){
 const[posts,setPosts]=useState([]);
 const[fc,setFc]=useState(0);
 const[fgc,setFgc]=useState(0);
 const[uploading,setUploading]=useState(false);
 const[avatarKey,setAvatarKey]=useState(Date.now());
+const[showEdit,setShowEdit]=useState(false);
+const[profile,setProfile]=useState(null);
 const fileRef=useRef();
 const username=user?.user_metadata?.username||user?.email?.split("@")[0]||"user";
 useEffect(()=>{
 supabase.from('posts').select('*').eq('username',username).order('created_at',{ascending:false}).then(({data})=>setPosts(data||[]));
 supabase.from('follows').select('id',{count:'exact'}).eq('following',username).then(({count})=>setFc(count||0));
 supabase.from('follows').select('id',{count:'exact'}).eq('follower',username).then(({count})=>setFgc(count||0));
+supabase.from('profiles').select('*').eq('username',username).single().then(({data})=>setProfile(data));
 },[]);
 const uploadAvatar=async(e)=>{
 const file=e.target.files[0];if(!file)return;setUploading(true);
@@ -1106,6 +1075,7 @@ setUploading(false);
 };
 return(
 <div style={{flex:1,maxWidth:680}}>
+{showEdit&&<EditProfileModal currentUser={user} onClose={()=>setShowEdit(false)} addToast={addToast} onSaved={(p)=>setProfile(p)}/>}
 <div style={{height:140,background:"linear-gradient(135deg,#1a0a00 0%,#2d1200 50%,rgba(255,77,28,0.12) 100%)"}}/>
 <div style={{padding:"0 20px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
 <div style={{marginTop:-28,marginBottom:10,position:"relative",display:"inline-block"}}>
@@ -1115,15 +1085,21 @@ return(
 </button>
 <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={uploadAvatar}/>
 </div>
-<div style={{fontSize:20,fontWeight:800,marginBottom:2}}>{username} <span style={{color:FIRE,fontSize:16}}>✦</span></div>
-<div style={{fontSize:12,color:"#666",marginBottom:10}}>@{username} · FUSE Member</div>
+<div style={{fontSize:20,fontWeight:800,marginBottom:2}}>{profile?.display_name||username} <span style={{color:FIRE,fontSize:16}}>✦</span></div>
+<div style={{fontSize:12,color:"#666",marginBottom:6}}>@{username} · FUSE Member</div>
+{profile?.bio&&<div style={{fontSize:13,color:"rgba(240,237,232,0.7)",lineHeight:1.6,marginBottom:8,maxWidth:400}}>{profile.bio}</div>}
+<div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
+{profile?.location&&<div style={{fontSize:12,color:"#666"}}>📍 {profile.location}</div>}
+{profile?.website&&<a href={profile.website} target="_blank" style={{fontSize:12,color:AMBER,textDecoration:"none"}}>🔗 {profile.website.replace("https://","")}</a>}
+</div>
 <div style={{display:"flex",gap:20,marginBottom:16}}>
 {[[posts.length,"Posts"],[fc,"Followers"],[fgc,"Following"]].map(([n,l])=>(
 <div key={l}><div style={{fontSize:20,fontWeight:900}}>{n}</div><div style={{fontSize:11,color:"#666"}}>{l}</div></div>
 ))}
 </div>
-<div style={{display:"flex",gap:8}}>
-<button onClick={()=>fileRef.current.click()} style={{background:FIRE,color:"#fff",border:"none",padding:"8px 18px",borderRadius:4,fontSize:13,fontWeight:600,cursor:"pointer"}}>📷 Change Photo</button>
+<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+<button onClick={()=>setShowEdit(true)} style={{background:FIRE,color:"#fff",border:"none",padding:"8px 18px",borderRadius:4,fontSize:13,fontWeight:600,cursor:"pointer"}}>✏️ Edit Profile</button>
+<button onClick={()=>fileRef.current.click()} style={{background:"rgba(255,255,255,0.08)",color:"#F0EDE8",border:"1px solid rgba(255,255,255,0.1)",padding:"8px 18px",borderRadius:4,fontSize:13,fontWeight:600,cursor:"pointer"}}>📷 Photo</button>
 <button onClick={onSignOut} style={{background:"rgba(255,77,28,0.15)",border:"1px solid rgba(255,77,28,0.3)",color:FIRE,padding:"8px 18px",borderRadius:4,fontSize:13,fontWeight:600,cursor:"pointer"}}>Sign Out</button>
 </div>
 </div>
@@ -1192,7 +1168,6 @@ const[showDM,setShowDM]=useState(false);
 const[dmRecipient,setDmRecipient]=useState(null);
 const[dmUnread,setDmUnread]=useState(0);
 const toastTimer=useRef({});
-
 const addToast=(t)=>{
 const id=Date.now();const toast={...t,id};
 setToasts(p=>[...p,toast]);
@@ -1203,7 +1178,6 @@ toastTimer.current[id]=setTimeout(()=>setToasts(p=>p.filter(x=>x.id!==id)),4000)
 const removeToast=(id)=>{clearTimeout(toastTimer.current[id]);setToasts(p=>p.filter(x=>x.id!==id));};
 const openNotifs=()=>{setShowNotifs(true);setUnread(0);setNotifs(p=>p.map(n=>({...n,read:true})));};
 const openDM=(recipient)=>{setDmRecipient(recipient||null);setShowDM(true);setDmUnread(0);};
-
 useEffect(()=>{
 supabase.auth.getSession().then(({data:{session}})=>{
 if(session?.user){setUser(session.user);setScreen("feed");}setLoading(false);
@@ -1213,7 +1187,6 @@ if(session?.user){setUser(session.user);setScreen("feed");addToast({icon:"👋",
 else{setUser(null);setScreen("splash");}
 });
 },[]);
-
 useEffect(()=>{
 if(!user)return;
 const username=user?.user_metadata?.username||user?.email?.split("@")[0]||"user";
@@ -1222,13 +1195,10 @@ if(p.new.receiver===username&&!showDM){setDmUnread(n=>n+1);}
 }).subscribe();
 return()=>supabase.removeChannel(ch);
 },[user,showDM]);
-
 const handleSignOut=async()=>{await supabase.auth.signOut();setUser(null);setScreen("splash");};
 if(loading)return <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",fontSize:32}}>⚡</div>;
-
 const SCREENS=user?["feed","search","communities","analytics","profile"]:["splash","auth"];
 const LABELS=user?["FEED","SEARCH","GROUNDS","STATS","PROFILE"]:["HOME","JOIN"];
-
 return(
 <div style={{fontFamily:"'DM Sans',sans-serif",background:"#0A0A0A",color:"#F0EDE8",minHeight:"100vh",display:"flex",flexDirection:"column"}}>
 <ToastContainer toasts={toasts} onRemove={removeToast}/>
@@ -1285,7 +1255,8 @@ return(
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
-</script><script>
+</script>
+<script>
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
     navigator.serviceWorker.register('/sw.js');
