@@ -34,6 +34,7 @@ const FIRE="#FF4D1C",AMBER="#FFAB00";
 const{useState,useEffect,useRef}=React;
 
 function getAvatarUrl(username){return`${SUPABASE_URL}/storage/v1/object/public/avatars/${username}.jpg`;}
+function getPostImageUrl(path){return`${SUPABASE_URL}/storage/v1/object/public/post-images/${path}`;}
 
 function Avatar({letter,bg,size=38,username}){
 const[imgError,setImgError]=useState(false);
@@ -147,14 +148,12 @@ const[liked,setLiked]=useState(false);
 const[likes,setLikes]=useState(0);
 const[commentCount,setCommentCount]=useState(0);
 const[showComments,setShowComments]=useState(false);
+const[imgExpanded,setImgExpanded]=useState(false);
 const username=currentUser?.user_metadata?.username||currentUser?.email?.split("@")[0]||"user";
 
 useEffect(()=>{
-// Load real like count
 supabase.from('post_likes').select('id',{count:'exact'}).eq('post_id',post.id).then(({count})=>setLikes(count||0));
-// Check if current user liked
 supabase.from('post_likes').select('id').eq('post_id',post.id).eq('username',username).single().then(({data})=>setLiked(!!data));
-// Load comment count
 supabase.from('comments').select('id',{count:'exact'}).eq('post_id',post.id).then(({count})=>setCommentCount(count||0));
 },[post.id]);
 
@@ -172,6 +171,12 @@ if(post.username!==username&&onLike)onLike(post.username,post.body);
 return(
 <div style={{padding:16,borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
 {showComments&&<CommentsPanel post={post} currentUser={currentUser} onClose={()=>setShowComments(false)} addToast={addToast}/>}
+{imgExpanded&&post.image_url&&(
+<div style={{position:"fixed",inset:0,zIndex:400,background:"rgba(0,0,0,0.95)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setImgExpanded(false)}>
+<img src={getPostImageUrl(post.image_url)} style={{maxWidth:"95vw",maxHeight:"90vh",borderRadius:8,objectFit:"contain"}} alt="post"/>
+<button style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,0.1)",border:"none",color:"#fff",fontSize:24,width:40,height:40,borderRadius:"50%",cursor:"pointer"}}>×</button>
+</div>
+)}
 <div style={{display:"inline-flex",alignItems:"center",gap:4,background:"rgba(255,171,0,0.1)",border:"1px solid rgba(255,171,0,0.2)",color:AMBER,fontSize:10,padding:"2px 8px",borderRadius:3,marginBottom:8,letterSpacing:1,fontWeight:600}}>{post.ground||"🎙 OPEN MIC"}</div>
 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
 <div onClick={()=>onUserClick&&onUserClick(post.username)} style={{cursor:"pointer"}}><Avatar letter={(post.username||"U")[0].toUpperCase()} username={post.username} size={34}/></div>
@@ -181,7 +186,12 @@ return(
 </div>
 <span style={{fontSize:11,color:"#555",flexShrink:0}}>{timeAgo(post.created_at)}</span>
 </div>
-<div style={{fontSize:14,lineHeight:1.65,color:"rgba(240,237,232,0.82)",paddingLeft:44,marginBottom:12}}>{post.body}</div>
+{post.body&&<div style={{fontSize:14,lineHeight:1.65,color:"rgba(240,237,232,0.82)",paddingLeft:44,marginBottom:post.image_url?10:12}}>{post.body}</div>}
+{post.image_url&&(
+<div style={{paddingLeft:44,marginBottom:12}}>
+<img src={getPostImageUrl(post.image_url)} onClick={()=>setImgExpanded(true)} style={{width:"100%",maxHeight:320,objectFit:"cover",borderRadius:10,cursor:"pointer",border:"1px solid rgba(255,255,255,0.07)"}} alt="post image"/>
+</div>
+)}
 <div style={{display:"flex",gap:4,paddingLeft:44}}>
 <button onClick={toggle} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 9px",borderRadius:4,fontSize:12,color:liked?FIRE:"#666",background:"none",border:"none",cursor:"pointer",fontWeight:liked?700:400}}>{liked?"♥":"♡"} {likes}</button>
 <button onClick={()=>setShowComments(true)} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 9px",borderRadius:4,fontSize:12,color:"#666",background:"none",border:"none",cursor:"pointer"}}>💬 {commentCount}</button>
@@ -231,7 +241,8 @@ return(
 <span style={{fontSize:13,fontWeight:700,color:AMBER}}>@{post.username}</span>
 <span style={{fontSize:11,color:"#555"}}>{timeAgo(post.created_at)}</span>
 </div>
-<div style={{fontSize:13,color:"rgba(240,237,232,0.75)",lineHeight:1.6,paddingLeft:36}}>{post.body}</div>
+{post.body&&<div style={{fontSize:13,color:"rgba(240,237,232,0.75)",lineHeight:1.6,paddingLeft:36}}>{post.body}</div>}
+{post.image_url&&<img src={getPostImageUrl(post.image_url)} style={{width:"100%",maxHeight:160,objectFit:"cover",borderRadius:8,marginTop:8}} alt="post"/>}
 </div>
 <div style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
 {fetching?<div style={{textAlign:"center",padding:24,color:"#555"}}>⚡</div>:
@@ -297,6 +308,7 @@ return(
 {posts.length===0?<div style={{textAlign:"center",padding:32,color:"#555",fontSize:14}}>No posts yet</div>:
 posts.map(p=>(
 <div key={p.id} style={{padding:"12px 20px",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+{p.image_url&&<img src={getPostImageUrl(p.image_url)} style={{width:"100%",maxHeight:160,objectFit:"cover",borderRadius:8,marginBottom:8}} alt="post"/>}
 <div style={{fontSize:13,color:"rgba(240,237,232,0.8)",lineHeight:1.6}}>{p.body}</div>
 <div style={{fontSize:11,color:"#555",marginTop:4,fontFamily:"monospace"}}>{timeAgo(p.created_at)}</div>
 </div>
@@ -425,10 +437,14 @@ return(
 function FeedScreen({user,addToast,onUserClick}){
 const[posts,setPosts]=useState([]);
 const[newPost,setNewPost]=useState("");
+const[imageFile,setImageFile]=useState(null);
+const[imagePreview,setImagePreview]=useState(null);
 const[loading,setLoading]=useState(false);
 const[fetching,setFetching]=useState(true);
 const[activeTab,setActiveTab]=useState("For You");
+const imgRef=useRef();
 const username=user?.user_metadata?.username||user?.email?.split("@")[0]||"user";
+
 useEffect(()=>{
 fetchPosts();
 const channel=supabase.channel('realtime-posts')
@@ -440,18 +456,36 @@ if(p.body&&p.body.includes(`@${username}`))addToast({icon:"📣",title:"YOU WERE
 }).subscribe();
 return()=>supabase.removeChannel(channel);
 },[]);
+
 const fetchPosts=async()=>{
 setFetching(true);
 const{data}=await supabase.from('posts').select('*').order('created_at',{ascending:false}).limit(50);
 if(data)setPosts(data);
 setFetching(false);
 };
-const submitPost=async()=>{
-if(!newPost.trim())return;
-setLoading(true);
-await supabase.from('posts').insert({body:newPost,username,ground:"🎙 OPEN MIC"});
-setNewPost("");setLoading(false);
+
+const pickImage=(e)=>{
+const file=e.target.files[0];
+if(!file)return;
+setImageFile(file);
+const reader=new FileReader();
+reader.onload=ev=>setImagePreview(ev.target.result);
+reader.readAsDataURL(file);
 };
+
+const submitPost=async()=>{
+if(!newPost.trim()&&!imageFile)return;
+setLoading(true);
+let image_url=null;
+if(imageFile){
+const path=`${username}-${Date.now()}.jpg`;
+const{error}=await supabase.storage.from('post-images').upload(path,imageFile,{contentType:imageFile.type});
+if(!error)image_url=path;
+}
+await supabase.from('posts').insert({body:newPost,username,ground:"🎙 OPEN MIC",image_url});
+setNewPost("");setImageFile(null);setImagePreview(null);setLoading(false);
+};
+
 return(
 <div style={{flex:1}}>
 <div style={{padding:"14px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:56,background:"rgba(10,10,10,0.95)",backdropFilter:"blur(12px)",zIndex:10}}>
@@ -466,9 +500,19 @@ return(
 <Avatar letter={username[0].toUpperCase()} username={username} size={38}/>
 <div style={{flex:1}}>
 <textarea value={newPost} onChange={e=>setNewPost(e.target.value)} style={{width:"100%",background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.07)",borderRadius:8,padding:"10px 14px",color:"#F0EDE8",fontSize:14,resize:"none",outline:"none",height:72}} placeholder="What's on your mind? Speak freely."/>
+{imagePreview&&(
+<div style={{position:"relative",marginTop:8,display:"inline-block"}}>
+<img src={imagePreview} style={{maxHeight:160,maxWidth:"100%",borderRadius:8,objectFit:"cover",border:"1px solid rgba(255,255,255,0.1)"}} alt="preview"/>
+<button onClick={()=>{setImageFile(null);setImagePreview(null);}} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.7)",border:"none",color:"#fff",width:24,height:24,borderRadius:"50%",cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+</div>
+)}
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8}}>
+<div style={{display:"flex",alignItems:"center",gap:8}}>
+<button onClick={()=>imgRef.current.click()} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",color:"#888",padding:"5px 10px",borderRadius:4,fontSize:12,cursor:"pointer"}}>🖼 Photo</button>
+<input ref={imgRef} type="file" accept="image/*" style={{display:"none"}} onChange={pickImage}/>
 <span style={{fontSize:12,color:"#555"}}>@{username}</span>
-<button onClick={submitPost} disabled={loading} style={{background:loading?"#333":FIRE,color:"#fff",border:"none",padding:"8px 20px",borderRadius:4,fontSize:13,fontWeight:800,cursor:"pointer",letterSpacing:1}}>{loading?"Posting...":"FUSE IT ⚡"}</button>
+</div>
+<button onClick={submitPost} disabled={loading||(!newPost.trim()&&!imageFile)} style={{background:loading||(!newPost.trim()&&!imageFile)?"#333":FIRE,color:"#fff",border:"none",padding:"8px 20px",borderRadius:4,fontSize:13,fontWeight:800,cursor:"pointer",letterSpacing:1}}>{loading?"Posting...":"FUSE IT ⚡"}</button>
 </div>
 </div>
 </div>
