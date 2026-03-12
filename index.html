@@ -67,7 +67,7 @@ return(
 function MentionPicker({query,onSelect}){
 const[users,setUsers]=useState([]);
 useEffect(()=>{
-if(!query&&query!=="")return;
+if(query===null)return;
 supabase.from('posts').select('username').ilike('username',`%${query}%`).then(({data})=>{
 if(data){const u=[...new Set(data.map(p=>p.username))].slice(0,5);setUsers(u);}
 });
@@ -145,6 +145,182 @@ if(currentUsername===targetUsername)return null;
 return <button onClick={toggle} disabled={loading} style={{background:following?"transparent":FIRE,color:following?"#F0EDE8":"#fff",border:following?"1px solid rgba(255,255,255,0.2)":"none",padding:"6px 16px",borderRadius:4,fontSize:12,fontWeight:700,cursor:"pointer"}}>{loading?"...":(following?"Following":"Follow")}</button>
 }
 
+function DMScreen({currentUser,initialRecipient,onClose,addToast}){
+const[conversations,setConversations]=useState([]);
+const[activeChat,setActiveChat]=useState(initialRecipient||null);
+const[messages,setMessages]=useState([]);
+const[newMsg,setNewMsg]=useState("");
+const[sending,setSending]=useState(false);
+const[newChatUser,setNewChatUser]=useState("");
+const[searching,setSearching]=useState(false);
+const[searchResults,setSearchResults]=useState([]);
+const[unreadCounts,setUnreadCounts]=useState({});
+const messagesEndRef=useRef();
+const username=currentUser?.user_metadata?.username||currentUser?.email?.split("@")[0]||"user";
+
+useEffect(()=>{fetchConversations();},[]);
+
+useEffect(()=>{
+if(!activeChat)return;
+fetchMessages(activeChat);
+markRead(activeChat);
+const ch=supabase.channel(`dm-${[username,activeChat].sort().join("-")}`)
+.on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},p=>{
+const m=p.new;
+if((m.sender===username&&m.receiver===activeChat)||(m.sender===activeChat&&m.receiver===username)){
+setMessages(prev=>[...prev,m]);
+if(m.sender!==username)markRead(activeChat);
+}
+}).subscribe();
+return()=>supabase.removeChannel(ch);
+},[activeChat]);
+
+useEffect(()=>{
+if(messagesEndRef.current)messagesEndRef.current.scrollIntoView({behavior:"smooth"});
+},[messages]);
+
+useEffect(()=>{
+const ch=supabase.channel('dm-notif')
+.on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},p=>{
+const m=p.new;
+if(m.receiver===username&&m.sender!==activeChat){
+addToast({icon:"💬",title:"NEW MESSAGE",message:`@${m.sender}: ${m.body.slice(0,40)}`,color:"#8b5cf6"});
+setUnreadCounts(prev=>({...prev,[m.sender]:(prev[m.sender]||0)+1}));
+fetchConversations();
+}
+}).subscribe();
+return()=>supabase.removeChannel(ch);
+},[activeChat]);
+
+const fetchConversations=async()=>{
+const{data}=await supabase.from('messages').select('*').or(`sender.eq.${username},receiver.eq.${username}`).order('created_at',{ascending:false});
+if(!data)return;
+const seen=new Set();const convos=[];
+data.forEach(m=>{
+const other=m.sender===username?m.receiver:m.sender;
+if(!seen.has(other)){seen.add(other);convos.push({username:other,lastMsg:m.body,lastTime:m.created_at,unread:!m.read&&m.receiver===username});}
+});
+setConversations(convos);
+};
+
+const fetchMessages=async(other)=>{
+const{data}=await supabase.from('messages').select('*')
+.or(`and(sender.eq.${username},receiver.eq.${other}),and(sender.eq.${other},receiver.eq.${username})`)
+.order('created_at',{ascending:true});
+if(data)setMessages(data);
+};
+
+const markRead=async(other)=>{
+await supabase.from('messages').update({read:true}).eq('receiver',username).eq('sender',other);
+setUnreadCounts(prev=>({...prev,[other]:0}));
+};
+
+const sendMessage=async()=>{
+if(!newMsg.trim()||!activeChat)return;
+setSending(true);
+await supabase.from('messages').insert({sender:username,receiver:activeChat,body:newMsg});
+setNewMsg("");setSending(false);
+fetchConversations();
+};
+
+const searchUsers=async(q)=>{
+if(!q.trim()){setSearchResults([]);return;}
+setSearching(true);
+const{data}=await supabase.from('posts').select('username').ilike('username',`%${q}%`);
+if(data){const u=[...new Set(data.map(p=>p.username))].filter(u=>u!==username).slice(0,5);setSearchResults(u);}
+setSearching(false);
+};
+
+const startChat=(u)=>{
+setActiveChat(u);setNewChatUser("");setSearchResults([]);
+if(!conversations.find(c=>c.username===u))setConversations(prev=>[{username:u,lastMsg:"",lastTime:new Date().toISOString()},...prev]);
+};
+
+if(activeChat){
+return(
+<div style={{position:"fixed",inset:0,zIndex:250,display:"flex",flexDirection:"column",background:"#0A0A0A"}}>
+<div style={{padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",gap:12,background:"rgba(10,10,10,0.97)",flexShrink:0}}>
+<button onClick={()=>setActiveChat(null)} style={{background:"rgba(255,255,255,0.08)",border:"none",color:"#F0EDE8",width:32,height:32,borderRadius:"50%",cursor:"pointer",fontSize:16}}>←</button>
+<Avatar letter={activeChat[0].toUpperCase()} username={activeChat} size={36}/>
+<div style={{flex:1}}>
+<div style={{fontSize:15,fontWeight:700}}>@{activeChat}</div>
+<div style={{fontSize:11,color:"#555"}}>FUSE Member</div>
+</div>
+<button onClick={onClose} style={{background:"none",border:"none",color:"#555",fontSize:20,cursor:"pointer"}}>×</button>
+</div>
+<div style={{flex:1,overflowY:"auto",padding:"16px"}}>
+{messages.length===0&&<div style={{textAlign:"center",padding:40,color:"#555",fontSize:14}}>No messages yet. Say hello! 👋</div>}
+{messages.map((m,i)=>{
+const mine=m.sender===username;
+return(
+<div key={m.id||i} className="fade-up" style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",marginBottom:10}}>
+{!mine&&<Avatar letter={m.sender[0].toUpperCase()} username={m.sender} size={28} style={{marginRight:8,flexShrink:0}}/>}
+<div style={{maxWidth:"72%"}}>
+<div style={{background:mine?FIRE:"#1A1A1A",color:"#fff",padding:"10px 14px",borderRadius:mine?"12px 12px 4px 12px":"12px 12px 12px 4px",fontSize:14,lineHeight:1.5,border:mine?"none":"1px solid rgba(255,255,255,0.07)"}}>
+{m.body}
+</div>
+<div style={{fontSize:10,color:"#555",marginTop:3,textAlign:mine?"right":"left"}}>{timeAgo(m.created_at)}</div>
+</div>
+</div>
+);
+})}
+<div ref={messagesEndRef}/>
+</div>
+<div style={{padding:"12px 16px",borderTop:"1px solid rgba(255,255,255,0.07)",background:"#0F0F0F",flexShrink:0}}>
+<div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+<div style={{flex:1,background:"#1A1A1A",borderRadius:10,border:"1px solid rgba(255,255,255,0.07)",padding:"10px 14px"}}>
+<textarea value={newMsg} onChange={e=>setNewMsg(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}} placeholder="Write a message..." style={{width:"100%",background:"none",border:"none",outline:"none",color:"#F0EDE8",fontSize:14,resize:"none",height:36,maxHeight:100}}/>
+</div>
+<button onClick={sendMessage} disabled={sending||!newMsg.trim()} style={{background:newMsg.trim()?FIRE:"#333",color:"#fff",border:"none",width:44,height:44,borderRadius:"50%",cursor:newMsg.trim()?"pointer":"not-allowed",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>➤</button>
+</div>
+</div>
+</div>
+);
+}
+
+return(
+<div style={{position:"fixed",inset:0,zIndex:250,display:"flex",flexDirection:"column",background:"#0A0A0A"}}>
+<div style={{padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(10,10,10,0.97)",flexShrink:0}}>
+<div style={{fontSize:20,fontWeight:900,letterSpacing:2}}>💬 MESSAGES</div>
+<button onClick={onClose} style={{background:"none",border:"none",color:"#666",fontSize:20,cursor:"pointer"}}>×</button>
+</div>
+<div style={{padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)",flexShrink:0,position:"relative"}}>
+<div style={{display:"flex",alignItems:"center",gap:10,background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"10px 14px"}}>
+<span style={{color:"#555"}}>🔍</span>
+<input value={newChatUser} onChange={e=>{setNewChatUser(e.target.value);searchUsers(e.target.value);}} placeholder="Search users to message..." style={{flex:1,background:"none",border:"none",outline:"none",color:"#F0EDE8",fontSize:14}}/>
+{newChatUser&&<button onClick={()=>{setNewChatUser("");setSearchResults([]);}} style={{background:"none",border:"none",color:"#555",fontSize:18,cursor:"pointer"}}>×</button>}
+</div>
+{searchResults.length>0&&(
+<div style={{position:"absolute",left:16,right:16,top:"100%",background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,zIndex:10,overflow:"hidden",boxShadow:"0 8px 24px rgba(0,0,0,0.4)"}}>
+{searchResults.map(u=>(
+<div key={u} onClick={()=>startChat(u)} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+<Avatar letter={u[0].toUpperCase()} username={u} size={32}/>
+<span style={{fontSize:14,fontWeight:600}}>@{u}</span>
+</div>
+))}
+</div>
+)}
+</div>
+<div style={{flex:1,overflowY:"auto"}}>
+{conversations.length===0&&<div style={{textAlign:"center",padding:40,color:"#555",fontSize:14}}>No messages yet.<br/>Search for a user to start chatting! 💬</div>}
+{conversations.map(c=>(
+<div key={c.username} onClick={()=>startChat(c.username)} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",borderBottom:"1px solid rgba(255,255,255,0.05)",cursor:"pointer",background:"transparent"}}>
+<div style={{position:"relative"}}>
+<Avatar letter={c.username[0].toUpperCase()} username={c.username} size={46}/>
+{(unreadCounts[c.username]>0||c.unread)&&<div style={{position:"absolute",top:0,right:0,width:12,height:12,borderRadius:"50%",background:FIRE,border:"2px solid #0A0A0A"}}/>}
+</div>
+<div style={{flex:1,minWidth:0}}>
+<div style={{fontSize:14,fontWeight:700,marginBottom:2}}>@{c.username}</div>
+<div style={{fontSize:12,color:"#555",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.lastMsg||"Start a conversation"}</div>
+</div>
+<div style={{fontSize:10,color:"#555",flexShrink:0}}>{timeAgo(c.lastTime)}</div>
+</div>
+))}
+</div>
+</div>
+);
+}
+
 function AuthScreen({onAuth}){
 const[mode,setMode]=useState("login");
 const[email,setEmail]=useState("");
@@ -191,7 +367,7 @@ return(
 );
 }
 
-function PostCard({post,currentUser,onLike,onUserClick,addToast}){
+function PostCard({post,currentUser,onLike,onUserClick,addToast,onDM}){
 const[liked,setLiked]=useState(false);
 const[likes,setLikes]=useState(0);
 const[cc,setCc]=useState(0);
@@ -221,7 +397,10 @@ return(
 <div onClick={()=>onUserClick&&onUserClick(post.username)} style={{cursor:"pointer"}}><Avatar letter={(post.username||"U")[0].toUpperCase()} username={post.username} size={34}/></div>
 <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
 <span onClick={()=>onUserClick&&onUserClick(post.username)} style={{fontSize:14,fontWeight:700,cursor:"pointer"}}>@{post.username}</span>
+<div style={{display:"flex",gap:6,alignItems:"center"}}>
+{post.username!==username&&<button onClick={()=>onDM&&onDM(post.username)} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",color:"#888",padding:"4px 8px",borderRadius:4,fontSize:11,cursor:"pointer"}}>💬 DM</button>}
 <FollowButton currentUsername={username} targetUsername={post.username}/>
+</div>
 </div>
 <span style={{fontSize:11,color:"#555",flexShrink:0}}>{timeAgo(post.created_at)}</span>
 </div>
@@ -293,7 +472,7 @@ comments.map(c=>(
 <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
 <Avatar letter={username[0].toUpperCase()} username={username} size={32}/>
 <div style={{flex:1,background:"#1A1A1A",borderRadius:8,border:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"flex-end",gap:8,padding:"8px 12px",position:"relative"}}>
-<SmartTextarea value={nc} onChange={setNc} placeholder="Write a comment... (@ to mention)" style={{flex:1,background:"none",border:"none",outline:"none",color:"#F0EDE8",fontSize:13,resize:"none",height:36,maxHeight:80,width:"100%"}}/>
+<SmartTextarea value={nc} onChange={setNc} placeholder="Write a comment..." style={{flex:1,background:"none",border:"none",outline:"none",color:"#F0EDE8",fontSize:13,resize:"none",height:36,maxHeight:80,width:"100%"}}/>
 <button onClick={submit} disabled={loading||!nc.trim()} style={{background:nc.trim()?FIRE:"#333",color:"#fff",border:"none",padding:"6px 12px",borderRadius:4,fontSize:12,fontWeight:700,cursor:nc.trim()?"pointer":"not-allowed",flexShrink:0}}>{loading?"...":"Send"}</button>
 </div>
 </div>
@@ -303,7 +482,7 @@ comments.map(c=>(
 );
 }
 
-function GroundScreen({ground,currentUser,onBack,addToast,onUserClick}){
+function GroundScreen({ground,currentUser,onBack,addToast,onUserClick,onDM}){
 const[posts,setPosts]=useState([]);
 const[newPost,setNewPost]=useState("");
 const[imageFile,setImageFile]=useState(null);
@@ -314,63 +493,31 @@ const[memberCount,setMemberCount]=useState(0);
 const[isMember,setIsMember]=useState(false);
 const imgRef=useRef();
 const username=currentUser?.user_metadata?.username||currentUser?.email?.split("@")[0]||"user";
-
 useEffect(()=>{
-fetchPosts();
+supabase.from('posts').select('*').eq('ground',ground.name).order('created_at',{ascending:false}).limit(50).then(({data})=>{if(data)setPosts(data);setFetching(false);});
 supabase.from('ground_members').select('id',{count:'exact'}).eq('ground_name',ground.name).then(({count})=>setMemberCount(count||0));
 supabase.from('ground_members').select('id').eq('ground_name',ground.name).eq('username',username).single().then(({data})=>setIsMember(!!data));
 },[ground.name]);
-
-const fetchPosts=async()=>{
-setFetching(true);
-const{data}=await supabase.from('posts').select('*').eq('ground',ground.name).order('created_at',{ascending:false}).limit(50);
-if(data)setPosts(data);
-setFetching(false);
-};
-
 const toggleMember=async()=>{
-if(isMember){
-await supabase.from('ground_members').delete().eq('ground_name',ground.name).eq('username',username);
-setIsMember(false);setMemberCount(m=>m-1);
-}else{
-await supabase.from('ground_members').insert({ground_name:ground.name,username});
-setIsMember(true);setMemberCount(m=>m+1);
-addToast({icon:"🔥",title:"JOINED GROUND",message:`You joined ${ground.emoji} ${ground.name}!`,color:AMBER});
-}
+if(isMember){await supabase.from('ground_members').delete().eq('ground_name',ground.name).eq('username',username);setIsMember(false);setMemberCount(m=>m-1);}
+else{await supabase.from('ground_members').insert({ground_name:ground.name,username});setIsMember(true);setMemberCount(m=>m+1);addToast({icon:"🔥",title:"JOINED!",message:`You joined ${ground.emoji} ${ground.name}!`,color:AMBER});}
 };
-
-const pickImage=(e)=>{
-const file=e.target.files[0];if(!file)return;
-setImageFile(file);
-const reader=new FileReader();
-reader.onload=ev=>setImagePreview(ev.target.result);
-reader.readAsDataURL(file);
-};
-
+const pickImage=(e)=>{const file=e.target.files[0];if(!file)return;setImageFile(file);const r=new FileReader();r.onload=ev=>setImagePreview(ev.target.result);r.readAsDataURL(file);};
 const submitPost=async()=>{
-if(!newPost.trim()&&!imageFile)return;
-setLoading(true);
+if(!newPost.trim()&&!imageFile)return;setLoading(true);
 let image_url=null;
-if(imageFile){
-const path=`${username}-${Date.now()}.jpg`;
-const{error}=await supabase.storage.from('post-images').upload(path,imageFile,{contentType:imageFile.type});
-if(!error)image_url=path;
-}
+if(imageFile){const path=`${username}-${Date.now()}.jpg`;const{error}=await supabase.storage.from('post-images').upload(path,imageFile,{contentType:imageFile.type});if(!error)image_url=path;}
 const{data}=await supabase.from('posts').insert({body:newPost,username,ground:ground.name,image_url}).select().single();
 if(data)setPosts(p=>[data,...p]);
 setNewPost("");setImageFile(null);setImagePreview(null);setLoading(false);
 };
-
 return(
 <div style={{flex:1}}>
 <div style={{position:"sticky",top:56,zIndex:10,background:"rgba(10,10,10,0.97)",backdropFilter:"blur(12px)",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
 <div style={{height:80,background:`linear-gradient(135deg,#1a0a00,#2d1200,rgba(255,77,28,0.15))`,display:"flex",alignItems:"center",padding:"0 20px",gap:12}}>
-<button onClick={onBack} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"#F0EDE8",width:32,height:32,borderRadius:"50%",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>←</button>
+<button onClick={onBack} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"#F0EDE8",width:32,height:32,borderRadius:"50%",cursor:"pointer",fontSize:16}}>←</button>
 <div style={{fontSize:32}}>{ground.emoji}</div>
-<div style={{flex:1}}>
-<div style={{fontSize:20,fontWeight:900,letterSpacing:2}}>{ground.name}</div>
-<div style={{fontSize:12,color:"#888"}}>{memberCount} members</div>
-</div>
+<div style={{flex:1}}><div style={{fontSize:20,fontWeight:900}}>{ground.name}</div><div style={{fontSize:12,color:"#888"}}>{memberCount} members</div></div>
 <button onClick={toggleMember} style={{background:isMember?"transparent":FIRE,color:isMember?"#F0EDE8":"#fff",border:isMember?"1px solid rgba(255,255,255,0.2)":"none",padding:"8px 18px",borderRadius:4,fontSize:13,fontWeight:700,cursor:"pointer"}}>{isMember?"✓ Joined":"Join"}</button>
 </div>
 <div style={{padding:"10px 16px",fontSize:13,color:"#666"}}>{ground.description}</div>
@@ -378,7 +525,7 @@ return(
 <div style={{padding:16,borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",gap:10}}>
 <Avatar letter={username[0].toUpperCase()} username={username} size={38}/>
 <div style={{flex:1}}>
-<SmartTextarea value={newPost} onChange={setNewPost} placeholder={`Post in ${ground.name}... (@ to mention)`} style={{width:"100%",background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.07)",borderRadius:8,padding:"10px 14px",color:"#F0EDE8",fontSize:14,resize:"none",outline:"none",height:72}}/>
+<SmartTextarea value={newPost} onChange={setNewPost} placeholder={`Post in ${ground.name}...`} style={{width:"100%",background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.07)",borderRadius:8,padding:"10px 14px",color:"#F0EDE8",fontSize:14,resize:"none",outline:"none",height:72}}/>
 {imagePreview&&(
 <div style={{position:"relative",marginTop:8,display:"inline-block"}}>
 <img src={imagePreview} style={{maxHeight:140,maxWidth:"100%",borderRadius:8,objectFit:"cover"}} alt="preview"/>
@@ -386,17 +533,15 @@ return(
 </div>
 )}
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8}}>
-<div style={{display:"flex",gap:8}}>
 <button onClick={()=>imgRef.current.click()} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",color:"#888",padding:"5px 10px",borderRadius:4,fontSize:12,cursor:"pointer"}}>🖼 Photo</button>
 <input ref={imgRef} type="file" accept="image/*" style={{display:"none"}} onChange={pickImage}/>
-</div>
 <button onClick={submitPost} disabled={loading||(!newPost.trim()&&!imageFile)} style={{background:loading||(!newPost.trim()&&!imageFile)?"#333":FIRE,color:"#fff",border:"none",padding:"8px 20px",borderRadius:4,fontSize:13,fontWeight:800,cursor:"pointer"}}>{loading?"Posting...":"FUSE IT ⚡"}</button>
 </div>
 </div>
 </div>
 {fetching?<div style={{textAlign:"center",padding:40,color:"#555",fontSize:24}}>⚡</div>:
-posts.length===0?<div style={{textAlign:"center",padding:40,color:"#555",fontSize:14}}>No posts yet in {ground.name}. Be the first! 🔥</div>:
-posts.map(p=><PostCard key={p.id} post={p} currentUser={currentUser} addToast={addToast} onLike={(a,b)=>addToast({icon:"♥",title:"POST LIKED",message:`Someone liked your post!`,color:"#ec4899"})} onUserClick={onUserClick}/>)}
+posts.length===0?<div style={{textAlign:"center",padding:40,color:"#555",fontSize:14}}>No posts yet. Be the first! 🔥</div>:
+posts.map(p=><PostCard key={p.id} post={p} currentUser={currentUser} addToast={addToast} onLike={()=>{}} onUserClick={onUserClick} onDM={onDM}/>)}
 </div>
 );
 }
@@ -410,20 +555,18 @@ const[error,setError]=useState("");
 const username=currentUser?.user_metadata?.username||currentUser?.email?.split("@")[0]||"user";
 const emojis=["🔥","🌍","🎙","🗳","💼","🎬","✝","🎮","🏆","🎵","📚","💪","🌱","🏥","⚡"];
 const submit=async()=>{
-if(!name.trim()){setError("Name is required");return;}
-if(name.length<3){setError("Name must be at least 3 characters");return;}
+if(!name.trim()||name.length<3){setError("Name must be at least 3 characters");return;}
 setLoading(true);setError("");
 const{data,error:err}=await supabase.from('grounds').insert({name:name.trim(),description:desc,emoji,created_by:username}).select().single();
-if(err){setError(err.message.includes("unique")?"A Ground with this name already exists":err.message);setLoading(false);return;}
+if(err){setError(err.message.includes("unique")?"Name already exists":err.message);setLoading(false);return;}
 await supabase.from('ground_members').insert({ground_name:name.trim(),username});
 addToast({icon:"🔥",title:"GROUND CREATED!",message:`${emoji} ${name} is live!`,color:AMBER});
-onCreated(data);onClose();
-setLoading(false);
+onCreated(data);onClose();setLoading(false);
 };
 return(
 <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
 <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.85)"}} onClick={onClose}/>
-<div style={{position:"relative",zIndex:301,background:"#111",width:"100%",maxWidth:400,borderRadius:14,overflow:"hidden",border:"1px solid rgba(255,255,255,0.1)",padding:24}}>
+<div style={{position:"relative",zIndex:301,background:"#111",width:"100%",maxWidth:400,borderRadius:14,border:"1px solid rgba(255,255,255,0.1)",padding:24}}>
 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
 <div style={{fontSize:18,fontWeight:900,letterSpacing:2}}>CREATE GROUND</div>
 <button onClick={onClose} style={{background:"none",border:"none",color:"#666",fontSize:20,cursor:"pointer"}}>×</button>
@@ -431,19 +574,11 @@ return(
 <div style={{marginBottom:16}}>
 <div style={{fontSize:12,color:"#666",marginBottom:8,letterSpacing:1}}>PICK AN EMOJI</div>
 <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-{emojis.map(e=>(
-<button key={e} onClick={()=>setEmoji(e)} style={{width:36,height:36,borderRadius:6,border:emoji===e?`2px solid ${FIRE}`:"1px solid rgba(255,255,255,0.1)",background:emoji===e?"rgba(255,77,28,0.15)":"transparent",fontSize:18,cursor:"pointer"}}>{e}</button>
-))}
+{emojis.map(e=><button key={e} onClick={()=>setEmoji(e)} style={{width:36,height:36,borderRadius:6,border:emoji===e?`2px solid ${FIRE}`:"1px solid rgba(255,255,255,0.1)",background:emoji===e?"rgba(255,77,28,0.15)":"transparent",fontSize:18,cursor:"pointer"}}>{e}</button>)}
 </div>
 </div>
-<div style={{marginBottom:14}}>
-<div style={{fontSize:12,color:"#666",marginBottom:6,letterSpacing:1}}>GROUND NAME *</div>
-<input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Tech Talk" maxLength={30} style={{width:"100%",background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,padding:"12px 14px",color:"#F0EDE8",fontSize:14,outline:"none"}}/>
-</div>
-<div style={{marginBottom:20}}>
-<div style={{fontSize:12,color:"#666",marginBottom:6,letterSpacing:1}}>DESCRIPTION</div>
-<textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="What is this Ground about?" maxLength={100} style={{width:"100%",background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,padding:"12px 14px",color:"#F0EDE8",fontSize:14,outline:"none",resize:"none",height:72}}/>
-</div>
+<div style={{marginBottom:14}}><div style={{fontSize:12,color:"#666",marginBottom:6,letterSpacing:1}}>GROUND NAME *</div><input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Tech Talk" maxLength={30} style={{width:"100%",background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,padding:"12px 14px",color:"#F0EDE8",fontSize:14,outline:"none"}}/></div>
+<div style={{marginBottom:20}}><div style={{fontSize:12,color:"#666",marginBottom:6,letterSpacing:1}}>DESCRIPTION</div><textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="What is this Ground about?" maxLength={100} style={{width:"100%",background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,padding:"12px 14px",color:"#F0EDE8",fontSize:14,outline:"none",resize:"none",height:72}}/></div>
 {error&&<div style={{background:"rgba(255,77,28,0.1)",border:"1px solid rgba(255,77,28,0.3)",borderRadius:6,padding:"10px 14px",fontSize:13,marginBottom:16,color:FIRE}}>{error}</div>}
 <div style={{display:"flex",gap:8}}>
 <button onClick={onClose} style={{flex:1,background:"transparent",color:"#888",border:"1px solid rgba(255,255,255,0.1)",padding:"12px",borderRadius:6,fontSize:14,cursor:"pointer"}}>Cancel</button>
@@ -454,24 +589,15 @@ return(
 );
 }
 
-function CommunitiesScreen({currentUser,addToast,onUserClick}){
+function CommunitiesScreen({currentUser,addToast,onUserClick,onDM}){
 const[grounds,setGrounds]=useState([]);
 const[activeGround,setActiveGround]=useState(null);
 const[showCreate,setShowCreate]=useState(false);
 const[search,setSearch]=useState("");
-
-useEffect(()=>{fetchGrounds();},[]);
-const fetchGrounds=async()=>{
-const{data}=await supabase.from('grounds').select('*').order('created_at',{ascending:true});
-if(data)setGrounds(data);
-};
-
-const filtered=grounds.filter(g=>g.name.toLowerCase().includes(search.toLowerCase())||g.description?.toLowerCase().includes(search.toLowerCase()));
-
 const BGAS=["linear-gradient(135deg,#1a0020,#3d0060)","linear-gradient(135deg,#001a10,#004020)","linear-gradient(135deg,#1a0a00,#3d1800)","linear-gradient(135deg,#001520,#003060)","linear-gradient(135deg,#1a1500,#3d3000)","linear-gradient(135deg,#0a001a,#200050)","linear-gradient(135deg,#001a1a,#004040)","linear-gradient(135deg,#1a001a,#400040)"];
-
-if(activeGround)return <GroundScreen ground={activeGround} currentUser={currentUser} onBack={()=>setActiveGround(null)} addToast={addToast} onUserClick={onUserClick}/>;
-
+useEffect(()=>{supabase.from('grounds').select('*').order('created_at',{ascending:true}).then(({data})=>{if(data)setGrounds(data);});},[]);
+const filtered=grounds.filter(g=>g.name.toLowerCase().includes(search.toLowerCase())||g.description?.toLowerCase().includes(search.toLowerCase()));
+if(activeGround)return <GroundScreen ground={activeGround} currentUser={currentUser} onBack={()=>setActiveGround(null)} addToast={addToast} onUserClick={onUserClick} onDM={onDM}/>;
 return(
 <div style={{flex:1}}>
 {showCreate&&<CreateGroundModal currentUser={currentUser} onClose={()=>setShowCreate(false)} onCreated={(g)=>{setGrounds(p=>[...p,g]);setActiveGround(g);}} addToast={addToast}/>}
@@ -492,11 +618,8 @@ return(
 <div style={{height:52,background:BGAS[i%BGAS.length],display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>{g.emoji}</div>
 <div style={{padding:12}}>
 <div style={{fontSize:14,fontWeight:700,marginBottom:4}}>{g.name}</div>
-<div style={{fontSize:12,color:"#666",lineHeight:1.5,marginBottom:10}}>{g.description||"A FUSE community"}</div>
-<div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-<span style={{fontSize:11,color:"#555"}}>Tap to enter</span>
-<span style={{fontSize:18}}>{g.emoji}</span>
-</div>
+<div style={{fontSize:12,color:"#666",lineHeight:1.5,marginBottom:8}}>{g.description||"A FUSE community"}</div>
+<span style={{fontSize:11,color:"#555"}}>Tap to enter →</span>
 </div>
 </div>
 ))}
@@ -505,7 +628,7 @@ return(
 );
 }
 
-function UserProfileModal({username,currentUser,onClose,addToast}){
+function UserProfileModal({username,currentUser,onClose,addToast,onDM}){
 const[posts,setPosts]=useState([]);
 const[fc,setFc]=useState(0);
 const[fgc,setFgc]=useState(0);
@@ -526,7 +649,10 @@ return(
 <div style={{padding:"0 20px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
 <div style={{marginTop:-24,marginBottom:10,display:"flex",alignItems:"flex-end",justifyContent:"space-between"}}>
 <Avatar letter={username[0].toUpperCase()} username={username} size={64}/>
-<FollowButton currentUsername={cu} targetUsername={username} onFollow={(u)=>addToast({icon:"👥",title:"NOW FOLLOWING",message:`You are now following @${u}!`,color:"#10b981"})}/>
+<div style={{display:"flex",gap:8}}>
+{cu!==username&&<button onClick={()=>{onClose();onDM&&onDM(username);}} style={{background:"none",border:`1px solid ${FIRE}`,color:FIRE,padding:"6px 14px",borderRadius:4,fontSize:12,fontWeight:700,cursor:"pointer"}}>💬 DM</button>}
+<FollowButton currentUsername={cu} targetUsername={username} onFollow={(u)=>addToast({icon:"👥",title:"NOW FOLLOWING",message:`Following @${u}!`,color:"#10b981"})}/>
+</div>
 </div>
 <div style={{fontSize:18,fontWeight:800,marginBottom:2}}>@{username} <span style={{color:FIRE}}>✦</span></div>
 <div style={{fontSize:12,color:"#666",marginBottom:12}}>FUSE Member</div>
@@ -628,7 +754,7 @@ return(
 </div>}
 {query&&<div style={{padding:"8px 0"}}>
 {searching&&<div style={{textAlign:"center",padding:32,color:"#555",fontSize:20}}>⚡</div>}
-{!searching&&searched&&results.length===0&&<div style={{textAlign:"center",padding:40,color:"#555"}}><div style={{fontSize:32,marginBottom:8}}>🔍</div><div style={{fontSize:14}}>No users found for "<span style={{color:FIRE}}>{query}</span>"</div></div>}
+{!searching&&searched&&results.length===0&&<div style={{textAlign:"center",padding:40,color:"#555"}}><div style={{fontSize:32,marginBottom:8}}>🔍</div><div>No users found for "<span style={{color:FIRE}}>{query}</span>"</div></div>}
 {!searching&&results.map(u=>(
 <div key={u.username} className="fade-up" style={{display:"flex",alignItems:"center",gap:12,padding:"14px 20px",borderBottom:"1px solid rgba(255,255,255,0.05)",cursor:"pointer"}} onClick={()=>onUserClick(u.username)}>
 <Avatar letter={u.username[0].toUpperCase()} username={u.username} size={46}/>
@@ -641,7 +767,7 @@ return(
 );
 }
 
-function FeedScreen({user,addToast,onUserClick}){
+function FeedScreen({user,addToast,onUserClick,onDM}){
 const[posts,setPosts]=useState([]);
 const[newPost,setNewPost]=useState("");
 const[imageFile,setImageFile]=useState(null);
@@ -665,18 +791,11 @@ setFetching(true);
 const{data}=await supabase.from('posts').select('*').order('created_at',{ascending:false}).limit(50);
 if(data)setPosts(data);setFetching(false);
 };
-const pickImage=(e)=>{
-const file=e.target.files[0];if(!file)return;setImageFile(file);
-const r=new FileReader();r.onload=ev=>setImagePreview(ev.target.result);r.readAsDataURL(file);
-};
+const pickImage=(e)=>{const file=e.target.files[0];if(!file)return;setImageFile(file);const r=new FileReader();r.onload=ev=>setImagePreview(ev.target.result);r.readAsDataURL(file);};
 const submitPost=async()=>{
 if(!newPost.trim()&&!imageFile)return;setLoading(true);
 let image_url=null;
-if(imageFile){
-const path=`${username}-${Date.now()}.jpg`;
-const{error}=await supabase.storage.from('post-images').upload(path,imageFile,{contentType:imageFile.type});
-if(!error)image_url=path;
-}
+if(imageFile){const path=`${username}-${Date.now()}.jpg`;const{error}=await supabase.storage.from('post-images').upload(path,imageFile,{contentType:imageFile.type});if(!error)image_url=path;}
 await supabase.from('posts').insert({body:newPost,username,ground:"🎙 Open Mic",image_url});
 setNewPost("");setImageFile(null);setImagePreview(null);setLoading(false);
 };
@@ -712,12 +831,12 @@ return(
 </div>
 {fetching?<div style={{textAlign:"center",padding:40,color:"#555",fontSize:24}}>⚡</div>:
 posts.length===0?<div style={{textAlign:"center",padding:40,color:"#555",fontSize:14}}>No posts yet. Be the first! 🔥</div>:
-posts.map(p=><PostCard key={p.id} post={p} currentUser={user} addToast={addToast} onLike={(a,b)=>addToast({icon:"♥",title:"POST LIKED",message:`Someone liked your post!`,color:"#ec4899"})} onUserClick={onUserClick}/>)}
+posts.map(p=><PostCard key={p.id} post={p} currentUser={user} addToast={addToast} onLike={(a,b)=>addToast({icon:"♥",title:"POST LIKED",message:`Someone liked your post!`,color:"#ec4899"})} onUserClick={onUserClick} onDM={onDM}/>)}
 </div>
 );
 }
 
-function ProfileScreen({user,onSignOut,addToast,onUserClick}){
+function ProfileScreen({user,onSignOut,addToast,onUserClick,onDM}){
 const[posts,setPosts]=useState([]);
 const[fc,setFc]=useState(0);
 const[fgc,setFgc]=useState(0);
@@ -736,7 +855,7 @@ try{
 const{error}=await supabase.storage.from('avatars').upload(`${username}.jpg`,file,{upsert:true,contentType:file.type});
 if(error)throw error;
 setAvatarKey(Date.now());
-addToast({icon:"🖼",title:"PHOTO UPDATED",message:"Your profile picture is live!",color:"#10b981"});
+addToast({icon:"🖼",title:"PHOTO UPDATED",message:"Profile picture updated!",color:"#10b981"});
 }catch(e){addToast({icon:"❌",title:"UPLOAD FAILED",message:e.message,color:FIRE});}
 setUploading(false);
 };
@@ -764,7 +883,7 @@ return(
 </div>
 </div>
 {posts.length===0?<div style={{textAlign:"center",padding:40,color:"#555",fontSize:14}}>No posts yet 🔥</div>:
-posts.map(p=><PostCard key={p.id} post={p} currentUser={user} addToast={addToast} onLike={()=>{}} onUserClick={onUserClick}/>)}
+posts.map(p=><PostCard key={p.id} post={p} currentUser={user} addToast={addToast} onLike={()=>{}} onUserClick={onUserClick} onDM={onDM}/>)}
 </div>
 );
 }
@@ -778,6 +897,9 @@ const[notifs,setNotifs]=useState([]);
 const[showNotifs,setShowNotifs]=useState(false);
 const[unread,setUnread]=useState(0);
 const[viewUser,setViewUser]=useState(null);
+const[showDM,setShowDM]=useState(false);
+const[dmRecipient,setDmRecipient]=useState(null);
+const[dmUnread,setDmUnread]=useState(0);
 const toastTimer=useRef({});
 
 const addToast=(t)=>{
@@ -789,16 +911,26 @@ toastTimer.current[id]=setTimeout(()=>setToasts(p=>p.filter(x=>x.id!==id)),4000)
 };
 const removeToast=(id)=>{clearTimeout(toastTimer.current[id]);setToasts(p=>p.filter(x=>x.id!==id));};
 const openNotifs=()=>{setShowNotifs(true);setUnread(0);setNotifs(p=>p.map(n=>({...n,read:true})));};
+const openDM=(recipient)=>{setDmRecipient(recipient||null);setShowDM(true);setDmUnread(0);};
 
 useEffect(()=>{
 supabase.auth.getSession().then(({data:{session}})=>{
 if(session?.user){setUser(session.user);setScreen("feed");}setLoading(false);
 });
 supabase.auth.onAuthStateChange((_,session)=>{
-if(session?.user){setUser(session.user);setScreen("feed");addToast({icon:"👋",title:"WELCOME",message:"You're part of the free speech revolution!",color:"#10b981"});}
+if(session?.user){setUser(session.user);setScreen("feed");addToast({icon:"👋",title:"WELCOME",message:"You're part of the revolution!",color:"#10b981"});}
 else{setUser(null);setScreen("splash");}
 });
 },[]);
+
+useEffect(()=>{
+if(!user)return;
+const username=user?.user_metadata?.username||user?.email?.split("@")[0]||"user";
+const ch=supabase.channel('dm-badge').on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},p=>{
+if(p.new.receiver===username&&!showDM){setDmUnread(n=>n+1);}
+}).subscribe();
+return()=>supabase.removeChannel(ch);
+},[user,showDM]);
 
 const handleSignOut=async()=>{await supabase.auth.signOut();setUser(null);setScreen("splash");};
 if(loading)return <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",fontSize:32}}>⚡</div>;
@@ -810,13 +942,17 @@ return(
 <div style={{fontFamily:"'DM Sans',sans-serif",background:"#0A0A0A",color:"#F0EDE8",minHeight:"100vh",display:"flex",flexDirection:"column"}}>
 <ToastContainer toasts={toasts} onRemove={removeToast}/>
 {showNotifs&&<NotificationsPanel notifs={notifs} onClear={()=>{setNotifs([]);setUnread(0);}} onClose={()=>setShowNotifs(false)}/>}
-{viewUser&&<UserProfileModal username={viewUser} currentUser={user} onClose={()=>setViewUser(null)} addToast={addToast}/>}
+{viewUser&&<UserProfileModal username={viewUser} currentUser={user} onClose={()=>setViewUser(null)} addToast={addToast} onDM={openDM}/>}
+{showDM&&<DMScreen currentUser={user} initialRecipient={dmRecipient} onClose={()=>{setShowDM(false);setDmRecipient(null);}} addToast={addToast}/>}
 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)",background:"rgba(10,10,10,0.97)",position:"sticky",top:0,zIndex:50}}>
 <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setScreen(user?"feed":"splash")}>
 <FuseLogo/>
 <div style={{fontSize:26,fontWeight:900,letterSpacing:6,background:`linear-gradient(135deg,#fff 30%,${FIRE} 100%)`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",fontFamily:"'Bebas Neue',sans-serif"}}>FUSE</div>
 </div>
 <div style={{display:"flex",alignItems:"center",gap:8}}>
+{user&&<button onClick={()=>openDM(null)} style={{position:"relative",background:"none",border:"none",cursor:"pointer",padding:6,color:"#888",fontSize:18}}>
+💬{dmUnread>0&&<div style={{position:"absolute",top:2,right:2,width:16,height:16,borderRadius:"50%",background:"#8b5cf6",fontSize:10,fontWeight:700,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{dmUnread}</div>}
+</button>}
 {user&&<button onClick={openNotifs} style={{position:"relative",background:"none",border:"none",cursor:"pointer",padding:6,color:"#888",fontSize:18}}>🔔{unread>0&&<div style={{position:"absolute",top:2,right:2,width:16,height:16,borderRadius:"50%",background:FIRE,fontSize:10,fontWeight:700,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{unread}</div>}</button>}
 <div style={{display:"flex",gap:3,background:"#111",borderRadius:8,padding:4,border:"1px solid rgba(255,255,255,0.07)"}}>
 {SCREENS.map((s,i)=>(
@@ -848,10 +984,10 @@ return(
 </div>
 )}
 {screen==="auth"&&<AuthScreen onAuth={(u)=>{setUser(u);setScreen("feed");}}/>}
-{screen==="feed"&&<FeedScreen user={user} addToast={addToast} onUserClick={setViewUser}/>}
+{screen==="feed"&&<FeedScreen user={user} addToast={addToast} onUserClick={setViewUser} onDM={openDM}/>}
 {screen==="search"&&<SearchScreen currentUser={user} addToast={addToast} onUserClick={setViewUser}/>}
-{screen==="communities"&&<CommunitiesScreen currentUser={user} addToast={addToast} onUserClick={setViewUser}/>}
-{screen==="profile"&&<ProfileScreen user={user} onSignOut={handleSignOut} addToast={addToast} onUserClick={setViewUser}/>}
+{screen==="communities"&&<CommunitiesScreen currentUser={user} addToast={addToast} onUserClick={setViewUser} onDM={openDM}/>}
+{screen==="profile"&&<ProfileScreen user={user} onSignOut={handleSignOut} addToast={addToast} onUserClick={setViewUser} onDM={openDM}/>}
 </div>
 );
 }
