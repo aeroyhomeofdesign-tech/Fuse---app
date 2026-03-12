@@ -201,7 +201,7 @@ const[location,setLocation]=useState("");
 const[loading,setLoading]=useState(false);
 const[fetching,setFetching]=useState(true);
 useEffect(()=>{
-supabase.from('profiles').select('*').eq('username',username).single().then(({data})=>{
+supabase.from('profiles').select('*').ilike('username',username).single().then(({data})=>{
 if(data){setDisplayName(data.display_name||"");setBio(data.bio||"");setWebsite(data.website||"");setLocation(data.location||"");}
 setFetching(false);
 });
@@ -731,7 +731,7 @@ useEffect(()=>{
 supabase.from('posts').select('*').eq('username',username).order('created_at',{ascending:false}).then(({data})=>setPosts(data||[]));
 supabase.from('follows').select('id',{count:'exact'}).eq('following',username).then(({count})=>setFc(count||0));
 supabase.from('follows').select('id',{count:'exact'}).eq('follower',username).then(({count})=>setFgc(count||0));
-supabase.from('profiles').select('*').eq('username',username).single().then(({data})=>setProfile(data));
+supabase.from('profiles').select('*').ilike('username',username).single().then(({data})=>setProfile(data));
 },[username]);
 return(
 <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",flexDirection:"column"}}>
@@ -1068,7 +1068,7 @@ useEffect(()=>{
 supabase.from('posts').select('*').eq('username',username).order('created_at',{ascending:false}).then(({data})=>setPosts(data||[]));
 supabase.from('follows').select('id',{count:'exact'}).eq('following',username).then(({count})=>setFc(count||0));
 supabase.from('follows').select('id',{count:'exact'}).eq('follower',username).then(({count})=>setFgc(count||0));
-supabase.from('profiles').select('*').eq('username',username).single().then(({data})=>setProfile(data));
+supabase.from('profiles').select('*').ilike('username',username).single().then(({data})=>setProfile(data));
 },[]);
 const uploadAvatar=async(e)=>{
 const file=e.target.files[0];if(!file)return;setUploading(true);
