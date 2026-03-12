@@ -43,15 +43,19 @@ const supabase=createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const FIRE="#FF4D1C",AMBER="#FFAB00";
 const{useState,useEffect,useRef}=React;
 
+const FOUNDER_USERNAME="navileeroychauke";
+
 function getAvatarUrl(u){return`${SUPABASE_URL}/storage/v1/object/public/avatars/${u}.jpg`;}
 function getPostImageUrl(p){return`${SUPABASE_URL}/storage/v1/object/public/post-images/${p}`;}
 function getPostVideoUrl(p){return`${SUPABASE_URL}/storage/v1/object/public/post-videos/${p}`;}
+function isFounder(u){return u&&u.toLowerCase()===FOUNDER_USERNAME;}
+function getBadge(username,profileBadge){return isFounder(username)?"FOUNDER":(profileBadge||null);}
 
 function Badge({badge}){
 if(badge==="FOUNDER")return <span style={{background:"linear-gradient(135deg,#FFD700,#FF8C00)",color:"#000",fontSize:10,fontWeight:900,padding:"3px 8px",borderRadius:4,letterSpacing:1,verticalAlign:"middle",marginLeft:6}}>👑 FOUNDER</span>;
 if(badge==="VERIFIED")return <span style={{background:"#1d9bf0",color:"#fff",fontSize:10,fontWeight:900,padding:"3px 8px",borderRadius:4,letterSpacing:1,verticalAlign:"middle",marginLeft:6}}>✅ VERIFIED</span>;
 if(badge==="PRO")return <span style={{background:"linear-gradient(135deg,#8b5cf6,#6d28d9)",color:"#fff",fontSize:10,fontWeight:900,padding:"3px 8px",borderRadius:4,letterSpacing:1,verticalAlign:"middle",marginLeft:6}}>💎 PRO</span>;
-return <span style={{color:FIRE,marginLeft:4}}>✦</span>;
+return null;
 }
 
 function Avatar({letter,bg,size=38,username}){
@@ -208,7 +212,8 @@ setFetching(false);
 },[username]);
 const save=async()=>{
 setLoading(true);
-const{error}=await supabase.from('profiles').upsert({username,display_name:displayName,bio,website,location,updated_at:new Date().toISOString()},{onConflict:'username'});
+const badge=getBadge(username,null);
+const{error}=await supabase.from('profiles').upsert({username,display_name:displayName,bio,website,location,badge,updated_at:new Date().toISOString()},{onConflict:'username'});
 if(error){addToast({icon:"❌",title:"ERROR",message:error.message,color:FIRE});}
 else{addToast({icon:"✅",title:"PROFILE UPDATED",message:"Your profile has been saved!",color:"#10b981"});if(onSaved)onSaved({displayName,bio,website,location});onClose();}
 setLoading(false);
@@ -291,7 +296,10 @@ return(
 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
 <div onClick={()=>onUserClick&&onUserClick(post.username)} style={{cursor:"pointer"}}><Avatar letter={(post.username||"U")[0].toUpperCase()} username={post.username} size={34}/></div>
 <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+<div style={{display:"flex",alignItems:"center",gap:4}}>
 <span onClick={()=>onUserClick&&onUserClick(post.username)} style={{fontSize:14,fontWeight:700,cursor:"pointer"}}>@{post.username}</span>
+<Badge badge={getBadge(post.username,null)}/>
+</div>
 <div style={{display:"flex",gap:6,alignItems:"center"}}>
 {post.username===username&&<DeleteButton onDelete={deletePost}/>}
 {post.username!==username&&<button onClick={()=>onDM&&onDM(post.username)} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",color:"#888",padding:"4px 8px",borderRadius:4,fontSize:11,cursor:"pointer"}}>💬 DM</button>}
@@ -749,7 +757,7 @@ return(
 <FollowButton currentUsername={cu} targetUsername={username} onFollow={(u)=>addToast({icon:"👥",title:"NOW FOLLOWING",message:`Following @${u}!`,color:"#10b981"})}/>
 </div>
 </div>
-<div style={{fontSize:18,fontWeight:800,marginBottom:2}}>{profile?.display_name||username}<Badge badge={profile?.badge}/></div>
+<div style={{fontSize:18,fontWeight:800,marginBottom:2}}>{profile?.display_name||username}<Badge badge={getBadge(username,profile?.badge)}/></div>
 <div style={{fontSize:12,color:"#666",marginBottom:6}}>@{username} · FUSE Member</div>
 {profile?.bio&&<div style={{fontSize:13,color:"rgba(240,237,232,0.7)",lineHeight:1.6,marginBottom:8}}>{profile.bio}</div>}
 <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
@@ -1080,6 +1088,7 @@ addToast({icon:"🖼",title:"PHOTO UPDATED",message:"Profile picture updated!",c
 }catch(e){addToast({icon:"❌",title:"UPLOAD FAILED",message:e.message,color:FIRE});}
 setUploading(false);
 };
+const badge=getBadge(username,profile?.badge);
 return(
 <div style={{flex:1,maxWidth:680}}>
 {showEdit&&<EditProfileModal currentUser={user} onClose={()=>setShowEdit(false)} addToast={addToast} onSaved={(p)=>setProfile(prev=>({...prev,...p}))}/>}
@@ -1092,7 +1101,7 @@ return(
 </button>
 <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={uploadAvatar}/>
 </div>
-<div style={{fontSize:20,fontWeight:800,marginBottom:2}}>{profile?.display_name||username}<Badge badge={profile?.badge}/></div>
+<div style={{fontSize:20,fontWeight:800,marginBottom:2}}>{profile?.display_name||username}<Badge badge={badge}/></div>
 <div style={{fontSize:12,color:"#666",marginBottom:6}}>@{username} · FUSE Member</div>
 {profile?.bio&&<div style={{fontSize:13,color:"rgba(240,237,232,0.7)",lineHeight:1.6,marginBottom:8,maxWidth:400}}>{profile.bio}</div>}
 <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
