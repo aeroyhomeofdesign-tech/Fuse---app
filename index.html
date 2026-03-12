@@ -47,6 +47,13 @@ function getAvatarUrl(u){return`${SUPABASE_URL}/storage/v1/object/public/avatars
 function getPostImageUrl(p){return`${SUPABASE_URL}/storage/v1/object/public/post-images/${p}`;}
 function getPostVideoUrl(p){return`${SUPABASE_URL}/storage/v1/object/public/post-videos/${p}`;}
 
+function Badge({badge}){
+if(badge==="FOUNDER")return <span style={{background:"linear-gradient(135deg,#FFD700,#FF8C00)",color:"#000",fontSize:10,fontWeight:900,padding:"3px 8px",borderRadius:4,letterSpacing:1,verticalAlign:"middle",marginLeft:6}}>👑 FOUNDER</span>;
+if(badge==="VERIFIED")return <span style={{background:"#1d9bf0",color:"#fff",fontSize:10,fontWeight:900,padding:"3px 8px",borderRadius:4,letterSpacing:1,verticalAlign:"middle",marginLeft:6}}>✅ VERIFIED</span>;
+if(badge==="PRO")return <span style={{background:"linear-gradient(135deg,#8b5cf6,#6d28d9)",color:"#fff",fontSize:10,fontWeight:900,padding:"3px 8px",borderRadius:4,letterSpacing:1,verticalAlign:"middle",marginLeft:6}}>💎 PRO</span>;
+return <span style={{color:FIRE,marginLeft:4}}>✦</span>;
+}
+
 function Avatar({letter,bg,size=38,username}){
 const[err,setErr]=useState(false);
 const url=username?getAvatarUrl(username):null;
@@ -742,7 +749,7 @@ return(
 <FollowButton currentUsername={cu} targetUsername={username} onFollow={(u)=>addToast({icon:"👥",title:"NOW FOLLOWING",message:`Following @${u}!`,color:"#10b981"})}/>
 </div>
 </div>
-<div style={{fontSize:18,fontWeight:800,marginBottom:2}}>{profile?.display_name||username} <span style={{color:FIRE}}>✦</span></div>
+<div style={{fontSize:18,fontWeight:800,marginBottom:2}}>{profile?.display_name||username}<Badge badge={profile?.badge}/></div>
 <div style={{fontSize:12,color:"#666",marginBottom:6}}>@{username} · FUSE Member</div>
 {profile?.bio&&<div style={{fontSize:13,color:"rgba(240,237,232,0.7)",lineHeight:1.6,marginBottom:8}}>{profile.bio}</div>}
 <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
@@ -1075,7 +1082,7 @@ setUploading(false);
 };
 return(
 <div style={{flex:1,maxWidth:680}}>
-{showEdit&&<EditProfileModal currentUser={user} onClose={()=>setShowEdit(false)} addToast={addToast} onSaved={(p)=>setProfile(p)}/>}
+{showEdit&&<EditProfileModal currentUser={user} onClose={()=>setShowEdit(false)} addToast={addToast} onSaved={(p)=>setProfile(prev=>({...prev,...p}))}/>}
 <div style={{height:140,background:"linear-gradient(135deg,#1a0a00 0%,#2d1200 50%,rgba(255,77,28,0.12) 100%)"}}/>
 <div style={{padding:"0 20px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
 <div style={{marginTop:-28,marginBottom:10,position:"relative",display:"inline-block"}}>
@@ -1085,7 +1092,7 @@ return(
 </button>
 <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={uploadAvatar}/>
 </div>
-<div style={{fontSize:20,fontWeight:800,marginBottom:2}}>{profile?.display_name||username} <span style={{color:FIRE,fontSize:16}}>✦</span></div>
+<div style={{fontSize:20,fontWeight:800,marginBottom:2}}>{profile?.display_name||username}<Badge badge={profile?.badge}/></div>
 <div style={{fontSize:12,color:"#666",marginBottom:6}}>@{username} · FUSE Member</div>
 {profile?.bio&&<div style={{fontSize:13,color:"rgba(240,237,232,0.7)",lineHeight:1.6,marginBottom:8,maxWidth:400}}>{profile.bio}</div>}
 <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
