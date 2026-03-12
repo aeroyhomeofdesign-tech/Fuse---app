@@ -142,95 +142,50 @@ if(currentUsername===targetUsername)return null;
 return <button onClick={toggle} disabled={loading} style={{background:following?"transparent":FIRE,color:following?"#F0EDE8":"#fff",border:following?"1px solid rgba(255,255,255,0.2)":"none",padding:"6px 16px",borderRadius:4,fontSize:12,fontWeight:700,cursor:"pointer"}}>{loading?"...":(following?"Following":"Follow")}</button>
 }
 
-function SearchScreen({currentUser,addToast,onUserClick}){
-const[query,setQuery]=useState("");
-const[results,setResults]=useState([]);
-const[searching,setSearching]=useState(false);
-const[searched,setSearched]=useState(false);
-const[trending,setTrending]=useState([]);
-const currentUsername=currentUser?.user_metadata?.username||currentUser?.email?.split("@")[0]||"user";
+function PostCard({post,currentUser,onLike,onUserClick,addToast}){
+const[liked,setLiked]=useState(false);
+const[likes,setLikes]=useState(0);
+const[commentCount,setCommentCount]=useState(0);
+const[showComments,setShowComments]=useState(false);
+const username=currentUser?.user_metadata?.username||currentUser?.email?.split("@")[0]||"user";
 
 useEffect(()=>{
-supabase.from('posts').select('username').then(({data})=>{
-if(!data)return;
-const counts={};
-data.forEach(p=>{counts[p.username]=(counts[p.username]||0)+1;});
-const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([username,posts])=>({username,posts}));
-setTrending(sorted);
-});
-},[]);
+// Load real like count
+supabase.from('post_likes').select('id',{count:'exact'}).eq('post_id',post.id).then(({count})=>setLikes(count||0));
+// Check if current user liked
+supabase.from('post_likes').select('id').eq('post_id',post.id).eq('username',username).single().then(({data})=>setLiked(!!data));
+// Load comment count
+supabase.from('comments').select('id',{count:'exact'}).eq('post_id',post.id).then(({count})=>setCommentCount(count||0));
+},[post.id]);
 
-useEffect(()=>{
-if(!query.trim()){setResults([]);setSearched(false);return;}
-const timer=setTimeout(()=>doSearch(query),400);
-return()=>clearTimeout(timer);
-},[query]);
-
-const doSearch=async(q)=>{
-setSearching(true);setSearched(true);
-const{data}=await supabase.from('posts').select('username').ilike('username',`%${q}%`);
-if(data){
-const unique=[...new Set(data.map(p=>p.username))];
-setResults(unique.map(username=>({username})));
+const toggle=async()=>{
+if(liked){
+await supabase.from('post_likes').delete().eq('post_id',post.id).eq('username',username);
+setLiked(false);setLikes(l=>l-1);
+}else{
+await supabase.from('post_likes').insert({post_id:post.id,username});
+setLiked(true);setLikes(l=>l+1);
+if(post.username!==username&&onLike)onLike(post.username,post.body);
 }
-setSearching(false);
 };
 
 return(
-<div style={{flex:1}}>
-<div style={{padding:"20px 20px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)",position:"sticky",top:56,background:"rgba(10,10,10,0.97)",backdropFilter:"blur(12px)",zIndex:10}}>
-<div style={{fontSize:28,fontWeight:900,letterSpacing:3,fontFamily:"'Bebas Neue',sans-serif",marginBottom:12}}>SEARCH</div>
-<div style={{display:"flex",alignItems:"center",gap:10,background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"10px 14px"}}>
-<span style={{fontSize:16,color:"#555"}}>🔍</span>
-<input
-value={query}
-onChange={e=>setQuery(e.target.value)}
-placeholder="Search users..."
-autoFocus
-style={{flex:1,background:"none",border:"none",outline:"none",color:"#F0EDE8",fontSize:15}}
-/>
-{query&&<button onClick={()=>setQuery("")} style={{background:"none",border:"none",color:"#555",fontSize:18,cursor:"pointer"}}>×</button>}
+<div style={{padding:16,borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+{showComments&&<CommentsPanel post={post} currentUser={currentUser} onClose={()=>setShowComments(false)} addToast={addToast}/>}
+<div style={{display:"inline-flex",alignItems:"center",gap:4,background:"rgba(255,171,0,0.1)",border:"1px solid rgba(255,171,0,0.2)",color:AMBER,fontSize:10,padding:"2px 8px",borderRadius:3,marginBottom:8,letterSpacing:1,fontWeight:600}}>{post.ground||"🎙 OPEN MIC"}</div>
+<div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+<div onClick={()=>onUserClick&&onUserClick(post.username)} style={{cursor:"pointer"}}><Avatar letter={(post.username||"U")[0].toUpperCase()} username={post.username} size={34}/></div>
+<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+<span onClick={()=>onUserClick&&onUserClick(post.username)} style={{fontSize:14,fontWeight:700,cursor:"pointer"}}>@{post.username}</span>
+<FollowButton currentUsername={username} targetUsername={post.username}/>
 </div>
+<span style={{fontSize:11,color:"#555",flexShrink:0}}>{timeAgo(post.created_at)}</span>
 </div>
-
-{!query&&(
-<div style={{padding:"20px"}}>
-<div style={{fontSize:12,color:"#555",letterSpacing:2,fontWeight:700,marginBottom:14}}>🔥 MOST ACTIVE USERS</div>
-{trending.map((u,i)=>(
-<div key={u.username} className="fade-up" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.05)",cursor:"pointer"}} onClick={()=>onUserClick(u.username)}>
-<div style={{width:28,height:28,borderRadius:"50%",background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"#555",flexShrink:0}}>#{i+1}</div>
-<Avatar letter={u.username[0].toUpperCase()} username={u.username} size={42}/>
-<div style={{flex:1}}>
-<div style={{fontSize:14,fontWeight:700}}>@{u.username}</div>
-<div style={{fontSize:12,color:"#555",marginTop:2}}>{u.posts} post{u.posts!==1?"s":""}</div>
+<div style={{fontSize:14,lineHeight:1.65,color:"rgba(240,237,232,0.82)",paddingLeft:44,marginBottom:12}}>{post.body}</div>
+<div style={{display:"flex",gap:4,paddingLeft:44}}>
+<button onClick={toggle} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 9px",borderRadius:4,fontSize:12,color:liked?FIRE:"#666",background:"none",border:"none",cursor:"pointer",fontWeight:liked?700:400}}>{liked?"♥":"♡"} {likes}</button>
+<button onClick={()=>setShowComments(true)} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 9px",borderRadius:4,fontSize:12,color:"#666",background:"none",border:"none",cursor:"pointer"}}>💬 {commentCount}</button>
 </div>
-<FollowButton currentUsername={currentUsername} targetUsername={u.username} onFollow={(u)=>addToast({icon:"👥",title:"NOW FOLLOWING",message:`You are now following @${u}!`,color:"#10b981"})}/>
-</div>
-))}
-</div>
-)}
-
-{query&&(
-<div style={{padding:"8px 0"}}>
-{searching&&<div style={{textAlign:"center",padding:32,color:"#555",fontSize:20}}>⚡</div>}
-{!searching&&searched&&results.length===0&&(
-<div style={{textAlign:"center",padding:40,color:"#555"}}>
-<div style={{fontSize:32,marginBottom:8}}>🔍</div>
-<div style={{fontSize:14}}>No users found for "<span style={{color:FIRE}}>{query}</span>"</div>
-</div>
-)}
-{!searching&&results.map(u=>(
-<div key={u.username} className="fade-up" style={{display:"flex",alignItems:"center",gap:12,padding:"14px 20px",borderBottom:"1px solid rgba(255,255,255,0.05)",cursor:"pointer"}} onClick={()=>onUserClick(u.username)}>
-<Avatar letter={u.username[0].toUpperCase()} username={u.username} size={46}/>
-<div style={{flex:1}}>
-<div style={{fontSize:15,fontWeight:700}}>@{u.username}</div>
-<div style={{fontSize:12,color:"#555",marginTop:2}}>FUSE Member</div>
-</div>
-<FollowButton currentUsername={currentUsername} targetUsername={u.username} onFollow={(u)=>addToast({icon:"👥",title:"NOW FOLLOWING",message:`You are now following @${u}!`,color:"#10b981"})}/>
-</div>
-))}
-</div>
-)}
 </div>
 );
 }
@@ -303,40 +258,6 @@ comments.map(c=>(
 </div>
 </div>
 </div>
-</div>
-</div>
-);
-}
-
-function PostCard({post,currentUser,onLike,onUserClick,addToast}){
-const[liked,setLiked]=useState(false);
-const[likes,setLikes]=useState(post.likes||0);
-const[commentCount,setCommentCount]=useState(0);
-const[showComments,setShowComments]=useState(false);
-const username=currentUser?.user_metadata?.username||currentUser?.email?.split("@")[0]||"user";
-useEffect(()=>{
-supabase.from('comments').select('id',{count:'exact'}).eq('post_id',post.id).then(({count})=>setCommentCount(count||0));
-},[post.id]);
-const toggle=()=>{
-const newLiked=!liked;setLiked(newLiked);setLikes(newLiked?likes+1:likes-1);
-if(newLiked&&post.username!==username&&onLike)onLike(post.username,post.body);
-};
-return(
-<div style={{padding:16,borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
-{showComments&&<CommentsPanel post={post} currentUser={currentUser} onClose={()=>setShowComments(false)} addToast={addToast}/>}
-<div style={{display:"inline-flex",alignItems:"center",gap:4,background:"rgba(255,171,0,0.1)",border:"1px solid rgba(255,171,0,0.2)",color:AMBER,fontSize:10,padding:"2px 8px",borderRadius:3,marginBottom:8,letterSpacing:1,fontWeight:600}}>{post.ground||"🎙 OPEN MIC"}</div>
-<div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-<div onClick={()=>onUserClick&&onUserClick(post.username)} style={{cursor:"pointer"}}><Avatar letter={(post.username||"U")[0].toUpperCase()} username={post.username} size={34}/></div>
-<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-<span onClick={()=>onUserClick&&onUserClick(post.username)} style={{fontSize:14,fontWeight:700,cursor:"pointer"}}>@{post.username}</span>
-<FollowButton currentUsername={username} targetUsername={post.username}/>
-</div>
-<span style={{fontSize:11,color:"#555",flexShrink:0}}>{timeAgo(post.created_at)}</span>
-</div>
-<div style={{fontSize:14,lineHeight:1.65,color:"rgba(240,237,232,0.82)",paddingLeft:44,marginBottom:12}}>{post.body}</div>
-<div style={{display:"flex",gap:4,paddingLeft:44}}>
-<button onClick={toggle} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 9px",borderRadius:4,fontSize:12,color:liked?FIRE:"#666",background:"none",border:"none",cursor:"pointer"}}>{liked?"♥":"♡"} {likes}</button>
-<button onClick={()=>setShowComments(true)} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 9px",borderRadius:4,fontSize:12,color:"#666",background:"none",border:"none",cursor:"pointer"}}>💬 {commentCount}</button>
 </div>
 </div>
 );
@@ -416,6 +337,87 @@ return(
 ))}
 </div>}
 </div>
+</div>
+);
+}
+
+function SearchScreen({currentUser,addToast,onUserClick}){
+const[query,setQuery]=useState("");
+const[results,setResults]=useState([]);
+const[searching,setSearching]=useState(false);
+const[searched,setSearched]=useState(false);
+const[trending,setTrending]=useState([]);
+const currentUsername=currentUser?.user_metadata?.username||currentUser?.email?.split("@")[0]||"user";
+useEffect(()=>{
+supabase.from('posts').select('username').then(({data})=>{
+if(!data)return;
+const counts={};
+data.forEach(p=>{counts[p.username]=(counts[p.username]||0)+1;});
+const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([username,posts])=>({username,posts}));
+setTrending(sorted);
+});
+},[]);
+useEffect(()=>{
+if(!query.trim()){setResults([]);setSearched(false);return;}
+const timer=setTimeout(()=>doSearch(query),400);
+return()=>clearTimeout(timer);
+},[query]);
+const doSearch=async(q)=>{
+setSearching(true);setSearched(true);
+const{data}=await supabase.from('posts').select('username').ilike('username',`%${q}%`);
+if(data){
+const unique=[...new Set(data.map(p=>p.username))];
+setResults(unique.map(username=>({username})));
+}
+setSearching(false);
+};
+return(
+<div style={{flex:1}}>
+<div style={{padding:"20px 20px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)",position:"sticky",top:56,background:"rgba(10,10,10,0.97)",backdropFilter:"blur(12px)",zIndex:10}}>
+<div style={{fontSize:28,fontWeight:900,letterSpacing:3,fontFamily:"'Bebas Neue',sans-serif",marginBottom:12}}>SEARCH</div>
+<div style={{display:"flex",alignItems:"center",gap:10,background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"10px 14px"}}>
+<span style={{fontSize:16,color:"#555"}}>🔍</span>
+<input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search users..." style={{flex:1,background:"none",border:"none",outline:"none",color:"#F0EDE8",fontSize:15}}/>
+{query&&<button onClick={()=>setQuery("")} style={{background:"none",border:"none",color:"#555",fontSize:18,cursor:"pointer"}}>×</button>}
+</div>
+</div>
+{!query&&(
+<div style={{padding:"20px"}}>
+<div style={{fontSize:12,color:"#555",letterSpacing:2,fontWeight:700,marginBottom:14}}>🔥 MOST ACTIVE USERS</div>
+{trending.map((u,i)=>(
+<div key={u.username} className="fade-up" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.05)",cursor:"pointer"}} onClick={()=>onUserClick(u.username)}>
+<div style={{width:28,height:28,borderRadius:"50%",background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"#555",flexShrink:0}}>#{i+1}</div>
+<Avatar letter={u.username[0].toUpperCase()} username={u.username} size={42}/>
+<div style={{flex:1}}>
+<div style={{fontSize:14,fontWeight:700}}>@{u.username}</div>
+<div style={{fontSize:12,color:"#555",marginTop:2}}>{u.posts} post{u.posts!==1?"s":""}</div>
+</div>
+<FollowButton currentUsername={currentUsername} targetUsername={u.username} onFollow={(u)=>addToast({icon:"👥",title:"NOW FOLLOWING",message:`You are now following @${u}!`,color:"#10b981"})}/>
+</div>
+))}
+</div>
+)}
+{query&&(
+<div style={{padding:"8px 0"}}>
+{searching&&<div style={{textAlign:"center",padding:32,color:"#555",fontSize:20}}>⚡</div>}
+{!searching&&searched&&results.length===0&&(
+<div style={{textAlign:"center",padding:40,color:"#555"}}>
+<div style={{fontSize:32,marginBottom:8}}>🔍</div>
+<div style={{fontSize:14}}>No users found for "<span style={{color:FIRE}}>{query}</span>"</div>
+</div>
+)}
+{!searching&&results.map(u=>(
+<div key={u.username} className="fade-up" style={{display:"flex",alignItems:"center",gap:12,padding:"14px 20px",borderBottom:"1px solid rgba(255,255,255,0.05)",cursor:"pointer"}} onClick={()=>onUserClick(u.username)}>
+<Avatar letter={u.username[0].toUpperCase()} username={u.username} size={46}/>
+<div style={{flex:1}}>
+<div style={{fontSize:15,fontWeight:700}}>@{u.username}</div>
+<div style={{fontSize:12,color:"#555",marginTop:2}}>FUSE Member</div>
+</div>
+<FollowButton currentUsername={currentUsername} targetUsername={u.username} onFollow={(u)=>addToast({icon:"👥",title:"NOW FOLLOWING",message:`You are now following @${u}!`,color:"#10b981"})}/>
+</div>
+))}
+</div>
+)}
 </div>
 );
 }
