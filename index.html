@@ -44,11 +44,22 @@ const FIRE="#FF4D1C",AMBER="#FFAB00";
 const{useState,useEffect,useRef}=React;
 
 const FOUNDER_USERNAME="navileeroychauke";
+const FOUNDER_PROFILE={
+display_name:"Navi Leeroy Chauke",
+bio:"Founder of FUSE. Priesthood, Purity, Holiness. We're in a dressing room for ETERNITY. 🇿🇼",
+location:"Harare, Zimbabwe",
+website:"",
+badge:"FOUNDER"
+};
 
 function getAvatarUrl(u){return`${SUPABASE_URL}/storage/v1/object/public/avatars/${u}.jpg`;}
 function getPostImageUrl(p){return`${SUPABASE_URL}/storage/v1/object/public/post-images/${p}`;}
 function getPostVideoUrl(p){return`${SUPABASE_URL}/storage/v1/object/public/post-videos/${p}`;}
 function isFounder(u){return u&&u.toLowerCase()===FOUNDER_USERNAME;}
+function getProfile(username,dbProfile){
+if(isFounder(username))return{...FOUNDER_PROFILE,...(dbProfile||{}),...FOUNDER_PROFILE};
+return dbProfile||null;
+}
 function getBadge(username,profileBadge){return isFounder(username)?"FOUNDER":(profileBadge||null);}
 
 function Badge({badge}){
@@ -198,13 +209,15 @@ return(
 
 function EditProfileModal({currentUser,onClose,addToast,onSaved}){
 const username=currentUser?.user_metadata?.username||currentUser?.email?.split("@")[0]||"user";
-const[displayName,setDisplayName]=useState("");
-const[bio,setBio]=useState("");
-const[website,setWebsite]=useState("");
-const[location,setLocation]=useState("");
+const founderMode=isFounder(username);
+const[displayName,setDisplayName]=useState(founderMode?FOUNDER_PROFILE.display_name:"");
+const[bio,setBio]=useState(founderMode?FOUNDER_PROFILE.bio:"");
+const[website,setWebsite]=useState(founderMode?FOUNDER_PROFILE.website:"");
+const[location,setLocation]=useState(founderMode?FOUNDER_PROFILE.location:"");
 const[loading,setLoading]=useState(false);
-const[fetching,setFetching]=useState(true);
+const[fetching,setFetching]=useState(!founderMode);
 useEffect(()=>{
+if(founderMode){return;}
 supabase.from('profiles').select('*').ilike('username',username).single().then(({data})=>{
 if(data){setDisplayName(data.display_name||"");setBio(data.bio||"");setWebsite(data.website||"");setLocation(data.location||"");}
 setFetching(false);
@@ -215,7 +228,7 @@ setLoading(true);
 const badge=getBadge(username,null);
 const{error}=await supabase.from('profiles').upsert({username,display_name:displayName,bio,website,location,badge,updated_at:new Date().toISOString()},{onConflict:'username'});
 if(error){addToast({icon:"❌",title:"ERROR",message:error.message,color:FIRE});}
-else{addToast({icon:"✅",title:"PROFILE UPDATED",message:"Your profile has been saved!",color:"#10b981"});if(onSaved)onSaved({displayName,bio,website,location});onClose();}
+else{addToast({icon:"✅",title:"PROFILE UPDATED",message:"Your profile has been saved!",color:"#10b981"});if(onSaved)onSaved({display_name:displayName,bio,website,location});onClose();}
 setLoading(false);
 };
 const inp={width:"100%",background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,padding:"12px 14px",color:"#F0EDE8",fontSize:14,outline:"none",marginBottom:4};
@@ -733,14 +746,17 @@ function UserProfileModal({username,currentUser,onClose,addToast,onDM}){
 const[posts,setPosts]=useState([]);
 const[fc,setFc]=useState(0);
 const[fgc,setFgc]=useState(0);
-const[profile,setProfile]=useState(null);
+const[profile,setProfile]=useState(isFounder(username)?FOUNDER_PROFILE:null);
 const cu=currentUser?.user_metadata?.username||currentUser?.email?.split("@")[0]||"user";
 useEffect(()=>{
 supabase.from('posts').select('*').eq('username',username).order('created_at',{ascending:false}).then(({data})=>setPosts(data||[]));
 supabase.from('follows').select('id',{count:'exact'}).eq('following',username).then(({count})=>setFc(count||0));
 supabase.from('follows').select('id',{count:'exact'}).eq('follower',username).then(({count})=>setFgc(count||0));
+if(!isFounder(username)){
 supabase.from('profiles').select('*').ilike('username',username).single().then(({data})=>setProfile(data));
+}
 },[username]);
+const badge=getBadge(username,profile?.badge);
 return(
 <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",flexDirection:"column"}}>
 <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.8)"}} onClick={onClose}/>
@@ -757,7 +773,7 @@ return(
 <FollowButton currentUsername={cu} targetUsername={username} onFollow={(u)=>addToast({icon:"👥",title:"NOW FOLLOWING",message:`Following @${u}!`,color:"#10b981"})}/>
 </div>
 </div>
-<div style={{fontSize:18,fontWeight:800,marginBottom:2}}>{profile?.display_name||username}<Badge badge={getBadge(username,profile?.badge)}/></div>
+<div style={{fontSize:18,fontWeight:800,marginBottom:2}}>{profile?.display_name||username}<Badge badge={badge}/></div>
 <div style={{fontSize:12,color:"#666",marginBottom:6}}>@{username} · FUSE Member</div>
 {profile?.bio&&<div style={{fontSize:13,color:"rgba(240,237,232,0.7)",lineHeight:1.6,marginBottom:8}}>{profile.bio}</div>}
 <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
@@ -1069,14 +1085,15 @@ const[fgc,setFgc]=useState(0);
 const[uploading,setUploading]=useState(false);
 const[avatarKey,setAvatarKey]=useState(Date.now());
 const[showEdit,setShowEdit]=useState(false);
-const[profile,setProfile]=useState(null);
+const[dbProfile,setDbProfile]=useState(null);
 const fileRef=useRef();
 const username=user?.user_metadata?.username||user?.email?.split("@")[0]||"user";
+const profile=isFounder(username)?{...FOUNDER_PROFILE,...(dbProfile||{}),badge:"FOUNDER",display_name:FOUNDER_PROFILE.display_name}:dbProfile;
 useEffect(()=>{
 supabase.from('posts').select('*').eq('username',username).order('created_at',{ascending:false}).then(({data})=>setPosts(data||[]));
 supabase.from('follows').select('id',{count:'exact'}).eq('following',username).then(({count})=>setFc(count||0));
 supabase.from('follows').select('id',{count:'exact'}).eq('follower',username).then(({count})=>setFgc(count||0));
-supabase.from('profiles').select('*').ilike('username',username).single().then(({data})=>setProfile(data));
+supabase.from('profiles').select('*').ilike('username',username).single().then(({data})=>{if(data)setDbProfile(data);});
 },[]);
 const uploadAvatar=async(e)=>{
 const file=e.target.files[0];if(!file)return;setUploading(true);
@@ -1088,10 +1105,9 @@ addToast({icon:"🖼",title:"PHOTO UPDATED",message:"Profile picture updated!",c
 }catch(e){addToast({icon:"❌",title:"UPLOAD FAILED",message:e.message,color:FIRE});}
 setUploading(false);
 };
-const badge=getBadge(username,profile?.badge);
 return(
 <div style={{flex:1,maxWidth:680}}>
-{showEdit&&<EditProfileModal currentUser={user} onClose={()=>setShowEdit(false)} addToast={addToast} onSaved={(p)=>setProfile(prev=>({...prev,...p}))}/>}
+{showEdit&&<EditProfileModal currentUser={user} onClose={()=>setShowEdit(false)} addToast={addToast} onSaved={(p)=>setDbProfile(prev=>({...prev,...p}))}/>}
 <div style={{height:140,background:"linear-gradient(135deg,#1a0a00 0%,#2d1200 50%,rgba(255,77,28,0.12) 100%)"}}/>
 <div style={{padding:"0 20px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
 <div style={{marginTop:-28,marginBottom:10,position:"relative",display:"inline-block"}}>
@@ -1101,12 +1117,15 @@ return(
 </button>
 <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={uploadAvatar}/>
 </div>
-<div style={{fontSize:20,fontWeight:800,marginBottom:2}}>{profile?.display_name||username}<Badge badge={badge}/></div>
+<div style={{fontSize:20,fontWeight:800,marginBottom:2,display:"flex",alignItems:"center",flexWrap:"wrap",gap:4}}>
+<span>{profile?.display_name||username}</span>
+<Badge badge={profile?.badge||getBadge(username,null)}/>
+</div>
 <div style={{fontSize:12,color:"#666",marginBottom:6}}>@{username} · FUSE Member</div>
 {profile?.bio&&<div style={{fontSize:13,color:"rgba(240,237,232,0.7)",lineHeight:1.6,marginBottom:8,maxWidth:400}}>{profile.bio}</div>}
 <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
 {profile?.location&&<div style={{fontSize:12,color:"#666"}}>📍 {profile.location}</div>}
-{profile?.website&&<a href={profile.website} target="_blank" style={{fontSize:12,color:AMBER,textDecoration:"none"}}>🔗 {profile.website.replace("https://","")}</a>}
+{profile?.website&&profile.website.length>0&&<a href={profile.website} target="_blank" style={{fontSize:12,color:AMBER,textDecoration:"none"}}>🔗 {profile.website.replace("https://","")}</a>}
 </div>
 <div style={{display:"flex",gap:20,marginBottom:16}}>
 {[[posts.length,"Posts"],[fc,"Followers"],[fgc,"Following"]].map(([n,l])=>(
